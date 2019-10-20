@@ -112,6 +112,8 @@ def shuffle(xs, ys):
 	return xs[indices], ys[indices]
 
 
+# Synthetic Datasets.
+
 def make_rotated_mnist(start_angle, end_angle, num_points):
     images, labels = [], []
     (train_x, train_y), (_, _) = mnist.load_data()
@@ -241,6 +243,8 @@ def run_model(model, split_data, epochs=1000, loss='hinge'):
 
 
 def rolling_accuracy(model, split_data, interval=1000, verbose=False):
+	# Compute the accuracy of a model on various intervals of the data,
+	# e.g. to check if there's domain shift.
 	print("rolling accuracies")
 	upper_idx = int(split_data.inter_x.shape[0] / interval)
 	accs = []
@@ -252,7 +256,8 @@ def rolling_accuracy(model, split_data, interval=1000, verbose=False):
 	return accs
 
 
-def plot(points, labels, model, index):
+def plot_linear(points, labels, model, index):
+	# Plot the decision boundary of a linear model, and a set of data points.
 	plt.cla()
 	# Plot data point colored by labels.
 	class_vals = [[], []]
@@ -273,7 +278,9 @@ def plot(points, labels, model, index):
 	plt.savefig('img'+str(index))
 
 
-def bootstrap_to(model, pred_model, unsup_x, confidence_q=0.1, epochs=20):
+def bootstrap_once(model, pred_model, unsup_x, confidence_q=0.1, epochs=20):
+	# Do one bootstrapping step on unsup_x, where pred_model is used to make predictions,
+	# and we use these predictions to update model.
 	logits = pred_model.predict(np.concatenate([unsup_x]))
 	confidence = np.amax(logits, axis=1) - np.amin(logits, axis=1)
 	alpha = np.quantile(confidence, confidence_q)
@@ -282,8 +289,10 @@ def bootstrap_to(model, pred_model, unsup_x, confidence_q=0.1, epochs=20):
 	model.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=False)
 
 
-def bootstrap_model(model, pred_model, split_data, interval=1000, confidence_q=0.1, epochs=20,
-	loss='hinge'):
+def bootstrap_model_iteratively(model, pred_model, split_data, interval=1000, confidence_q=0.1,
+	epochs=20, loss='hinge'):
+	# Iteratively bootstrap, that is bootstrap on the first `interval' samples a few times,
+	# then on the next `interval' samples a few times, etc.
 	print("bootstrapping model")
 	unsup_x = np.concatenate([split_data.inter_x, split_data.target_unsup_x])
 	debug_unsup_y = np.concatenate([split_data.inter_y, split_data.debug_target_unsup_y])
@@ -302,7 +311,7 @@ def bootstrap_model(model, pred_model, split_data, interval=1000, confidence_q=0
 	for i in range(upper_idx):
 		cur_xs = unsup_x[interval*i:interval*(i+1)]
 		cur_ys = debug_unsup_y[interval*i:interval*(i+1)]
-		bootstrap_to(model, pred_model, cur_xs, confidence_q, epochs)
+		bootstrap_once(model, pred_model, cur_xs, confidence_q, epochs)
 		model.evaluate(cur_xs, cur_ys)
 		pred_model = model
 		# print(np.linalg.norm(model.layers[-1].get_weights()[0]))
@@ -311,8 +320,10 @@ def bootstrap_model(model, pred_model, split_data, interval=1000, confidence_q=0
 	print('Evaluate on target.')
 	model.evaluate(split_data.target_val_x, split_data.target_val_y)
 
-def bootstrap_to_unsup(model, pred_model, split_data, confidence_q=0.2, epochs=20, num_inter=1000,
+
+def bootstrap_to_all_unsup(model, pred_model, split_data, confidence_q=0.2, epochs=20, num_inter=1000,
 	loss='hinge'):
+	# Bootstrap to all the unsupervised data in one go.
 	print("bootstrapping to unsup data")
 	if loss == 'hinge':
 		loss = sparse_categorical_hinge(model.output_shape[1])
@@ -324,7 +335,7 @@ def bootstrap_to_unsup(model, pred_model, split_data, confidence_q=0.2, epochs=2
 	unsup_x = np.concatenate(
 		[split_data.inter_x[-num_inter:], split_data.target_unsup_x],
 		axis=0)
-	bootstrap_to(model, pred_model, unsup_x, confidence_q, epochs)
+	bootstrap_once(model, pred_model, unsup_x, confidence_q, epochs)
 	model.evaluate(split_data.target_val_x, split_data.target_val_y)
 
 
@@ -526,7 +537,7 @@ def direct_bootstrap(env_config, num_inter, num_rounds=10):
 	for i in range(num_rounds):
 		target_bootstrap = env_config.model(
 			dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
-		bootstrap_to_unsup(
+		bootstrap_to_all_unsup(
 			target_bootstrap, pred_model, split_data, epochs=env_config.epochs,
 			num_inter=num_inter, loss=env_config.loss)
 		pred_model = target_bootstrap
@@ -540,19 +551,19 @@ def gradual_bootstrap(env_config):
 	model_bootstrap = env_config.model(
 		dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
 	run_model(model, split_data, epochs=env_config.epochs, loss=env_config.loss)
-	bootstrap_model(
+	bootstrap_model_iteratively(
 		model_bootstrap, model, split_data,
 		interval=env_config.interval, epochs=env_config.epochs, loss=env_config.loss)
 
 
 def main():
-	# rotated_mnist_35_conv_experiment()
+	rotated_mnist_35_conv_experiment()
 	# rotated_mnist_35_linear_experiment()
 	# rotated_mnist_35_nneighbor_experiment()
 	# gauss_2D_high_noise_linear_experiment()
 	# gauss_50D_low_noise_linear_experiment()
 	# faces_linear_experiment()
-	faces_conv_experiment()
+	# faces_conv_experiment()
 	# gauss_2D_high_noise_nn_experiment()
 	# gauss_50D_low_noise_linear_experiment()
 
