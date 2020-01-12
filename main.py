@@ -367,11 +367,12 @@ def bootstrap_once_labels(model, pred_model, train_x, train_y, unsup_x, confiden
     model.fit(xs, ys, epochs=epochs, verbose=False)
 
 
-def bootstrap_model_iteratively(model, pred_model, split_data, interval=1000, confidence_q=0.1,
+def bootstrap_model_iteratively(new_model_func, pred_model, split_data, interval=1000, confidence_q=0.1,
     epochs=20, loss='hinge'):
     # Iteratively bootstrap, that is bootstrap on the first `interval' samples a few times,
     # then on the next `interval' samples a few times, etc.
     print("bootstrapping model")
+    model = pred_model
     unsup_x = np.concatenate([split_data.inter_x, split_data.target_unsup_x])
     debug_unsup_y = np.concatenate([split_data.inter_y, split_data.debug_target_unsup_y])
     upper_idx = int(unsup_x.shape[0] / interval)
@@ -380,10 +381,14 @@ def bootstrap_model_iteratively(model, pred_model, split_data, interval=1000, co
         entropy = -tf.reduce_sum(y_pred * tf.log(tf.clip_by_value(y_pred, 1e-10, 1-1e-10)), axis=1)
         return ce + 0.0 * entropy
     loss = get_loss(loss, model.output_shape[1])
-    model.compile(optimizer='adam',
-                  loss=[loss],
-                  metrics=[metrics.sparse_categorical_accuracy])
+    # model.compile(optimizer='adam',
+    #               loss=[loss],
+    #               metrics=[metrics.sparse_categorical_accuracy])
     for i in range(upper_idx):
+        # model = new_model_func()
+        # model.compile(optimizer='adam',
+        #           loss=[loss],
+        #           metrics=[metrics.sparse_categorical_accuracy])
         cur_xs = unsup_x[interval*i:interval*(i+1)]
         cur_ys = debug_unsup_y[interval*i:interval*(i+1)]
         # bootstrap_once(model, pred_model, cur_xs, confidence_q, epochs)
@@ -781,13 +786,14 @@ def gradual_bootstrap(env_config):
     # for i in range(10):
     #     sup_model.fit(split_data.target_unsup_x, split_data.debug_target_unsup_y, verbose=True, epochs=5)
     #     sup_model.evaluate(split_data.target_val_x, split_data.target_val_y)
-    model = env_config.model(
-        dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
-    model_bootstrap = env_config.model(
-        dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
+    def new_model():
+        return env_config.model(
+            dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
+    model = new_model()
+    # model_bootstrap = new_model()
     run_model(model, split_data, epochs=env_config.epochs, loss=env_config.loss)
     bootstrap_model_iteratively(
-        model_bootstrap, model, split_data,
+        new_model, model, split_data,
         interval=env_config.interval, epochs=env_config.epochs, loss=env_config.loss)
 
 
@@ -796,7 +802,7 @@ def main():
     # rotated_cifar10_features_35_linear_experiment()
     # rotated_cifar10_35_conv_experiment()
     # rotated_mnist_35_conv_experiment()
-    # rotated_mnist_35_linear_experiment(0)
+    rotated_mnist_35_linear_experiment(0)
     # rotated_mnist_35_linear_normalized_experiment(0)
     # rotated_mnist_35_linear_ramp_experiment()
     # rotated_mnist_35_linear_softmax_experiment()
