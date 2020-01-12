@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import scipy.io
 from scipy import ndimage
+import sklearn.preprocessing
 from tensorflow.keras import backend as K
 from tensorflow.keras import losses
 from tensorflow.keras import metrics
@@ -158,8 +159,14 @@ def make_rotated_dataset(dataset, start_angle, end_angle, num_points):
         labels.append(train_y[idx])
     return np.array(images), np.array(labels)
 
-def make_rotated_mnist(start_angle, end_angle, num_points):
+def make_rotated_mnist(start_angle, end_angle, num_points, normalize=False):
     Xs, Ys = make_rotated_dataset(mnist, start_angle, end_angle, num_points)
+    if normalize:
+        Xs = np.reshape(Xs, (Xs.shape[0], -1))
+        old_mean = np.mean(Xs)
+        Xs = sklearn.preprocessing.normalize(Xs, norm='l2')
+        new_mean = np.mean(Xs)
+        Xs = Xs * (old_mean / new_mean)
     return np.expand_dims(np.array(Xs), axis=-1), Ys
 
 def make_rotated_cifar10(start_angle, end_angle, num_points):
@@ -440,6 +447,18 @@ rot_mnist_0_35_29000 = Dataset(
     input_shape=(28,28,1),
 )
 
+rot_mnist_normalized_0_35_29000 = Dataset(
+    get_data = lambda: make_rotated_mnist(0.0, 35.0, 29000, normalize=True),
+    n_src_train = 2000,
+    n_src_valid = 1000,
+    n_target_unsup = 2000,
+    n_target_val = 1000,
+    n_target_test = 1000,
+    target_end=29000,
+    n_classes=10,
+    input_shape=(784,1),
+)
+
 rot_cifar10_0_35_29000 = Dataset(
     get_data = lambda: make_rotated_cifar10(0.0, 35.0, 29000),
     n_src_train = 2000,
@@ -512,6 +531,23 @@ def rotated_mnist_35_linear_experiment(seed=1):
     rand_seed(seed)
     env_config = ExperimentConfig(
         dataset=rot_mnist_0_35_29000,
+        model=linear_model,
+        interval=2000,
+        epochs=20,
+        l2_reg=0.02,
+        loss='hinge')
+    print("\n\n Gradual bootstrap:")
+    gradual_bootstrap(env_config)
+    # print("\n\n Direct boostrap to target:")
+    # direct_bootstrap(env_config, num_inter=0, num_rounds=12)
+    # print("\n\n Direct boostrap to all unsup data:")
+    # direct_bootstrap(env_config, num_inter=22000, num_rounds=12)
+
+
+def rotated_mnist_35_linear_normalized_experiment(seed=1):
+    rand_seed(seed)
+    env_config = ExperimentConfig(
+        dataset=rot_mnist_normalized_0_35_29000,
         model=linear_model,
         interval=2000,
         epochs=20,
@@ -760,9 +796,9 @@ def main():
     # rotated_cifar10_features_35_linear_experiment()
     # rotated_cifar10_35_conv_experiment()
     # rotated_mnist_35_conv_experiment()
-    # rotated_mnist_35_linear_experiment()
-    rotated_mnist_35_linear_ramp_experiment()
-    # rotated_mnist_35_linear_experiment()
+    # rotated_mnist_35_linear_experiment(0)
+    # rotated_mnist_35_linear_normalized_experiment(0)
+    # rotated_mnist_35_linear_ramp_experiment()
     # rotated_mnist_35_linear_softmax_experiment()
     # rotated_mnist_35_nneighbor_experiment()
     # gauss_2D_high_noise_linear_experiment()
