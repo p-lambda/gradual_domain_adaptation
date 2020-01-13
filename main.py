@@ -145,6 +145,40 @@ def shuffle(xs, ys):
 
 # Synthetic Datasets.
 
+def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
+    data = scipy.io.loadmat('mnist32_train.mat')
+    mnist_x = data['X']
+    mnist_y = data['y']
+    mnist_y = np.squeeze(mnist_y)
+    mnist_x, mnist_y = shuffle(mnist_x, mnist_y)
+
+    data = scipy.io.loadmat('svhn_train_32x32.mat')
+    svhn_x = data['X']
+    svhn_x = svhn_x / 255.0
+    svhn_x = np.transpose(svhn_x, [3, 0, 1, 2])
+    svhn_y = data['y']
+    svhn_y = np.squeeze(svhn_y)
+    svhn_y[(svhn_y == 10)] = 0
+    svhn_x, svhn_y = shuffle(svhn_x, svhn_y)
+
+    delta = float(mnist_end_prob - mnist_start_prob) / (num_examples - 1)
+    mnist_probs = np.array([mnist_start_prob + delta * i for i in range(num_examples)])
+    # assert((np.all(mnist_end_prob >= mnist_probs) and np.all(mnist_probs >= mnist_start_prob)) or
+    #      (np.all(mnist_start_prob >= mnist_probs) and np.all(mnist_probs >= mnist_end_prob)))
+    domains = np.random.binomial(n=1, p=mnist_probs)
+    assert(domains.shape == (num_examples,))
+    mnist_indices = np.arange(num_examples)[domains == 1]
+    svhn_indices = np.arange(num_examples)[domains == 0]
+    assert(svhn_x.shape[1:] == mnist_x.shape[1:])
+    xs = np.empty((num_examples,) + tuple(svhn_x.shape[1:]), dtype='float32')
+    ys = np.empty((num_examples,), dtype='int32')
+    xs[mnist_indices] = mnist_x[:mnist_indices.size]
+    xs[svhn_indices] = svhn_x[:svhn_indices.size]
+    ys[mnist_indices] = mnist_y[:mnist_indices.size]
+    ys[svhn_indices] = svhn_y[:svhn_indices.size]
+    return xs, ys
+
+
 def make_rotated_dataset(dataset, start_angle, end_angle, num_points):
     images, labels = [], []
     (train_x, train_y), (_, _) = dataset.load_data()
@@ -159,6 +193,7 @@ def make_rotated_dataset(dataset, start_angle, end_angle, num_points):
         labels.append(train_y[idx])
     return np.array(images), np.array(labels)
 
+
 def make_rotated_mnist(start_angle, end_angle, num_points, normalize=False):
     Xs, Ys = make_rotated_dataset(mnist, start_angle, end_angle, num_points)
     if normalize:
@@ -168,6 +203,7 @@ def make_rotated_mnist(start_angle, end_angle, num_points, normalize=False):
         new_mean = np.mean(Xs)
         Xs = Xs * (old_mean / new_mean)
     return np.expand_dims(np.array(Xs), axis=-1), Ys
+
 
 def make_rotated_cifar10(start_angle, end_angle, num_points):
     return make_rotated_dataset(cifar10, start_angle, end_angle, num_points)   
@@ -440,6 +476,20 @@ faces = Dataset(
     input_shape=(32,32,1),
 )
 
+
+mnist_svhn_16000 = Dataset(
+    get_data = lambda: make_mnist_svhn_dataset(16000, 0.9, 0.1),
+    n_src_train = 1000,
+    n_src_valid = 1000,
+    n_target_unsup = 2000,
+    n_target_val = 1000,
+    n_target_test = 1000,
+    target_end=16000,
+    n_classes=10,
+    input_shape=(32,32,3),
+)
+
+
 rot_mnist_0_35_29000 = Dataset(
     get_data = lambda: make_rotated_mnist(0.0, 35.0, 29000),
     n_src_train = 2000,
@@ -531,6 +581,45 @@ gauss_50D_20K_low_noise = Dataset(
 
 ExperimentConfig = collections.namedtuple('ExperimentConfig',
     'dataset model interval epochs l2_reg loss')
+
+
+def mnist_svhn_linear_experiment(seed=1):
+    rand_seed(seed)
+    env_config = ExperimentConfig(
+        dataset=mnist_svhn_16000,
+        model=linear_model,
+        interval=2000,
+        epochs=20,
+        l2_reg=0.02,
+        loss='hinge')
+    print("\n\nOracle Target")
+    fit_target(env_config)
+    print("\n\n Gradual bootstrap:")
+    gradual_bootstrap(env_config)
+    print("\n\n Direct boostrap to target:")
+    direct_bootstrap(env_config, num_inter=0, num_rounds=12)
+    print("\n\n Direct boostrap to all unsup data:")
+    direct_bootstrap(env_config, num_inter=22000, num_rounds=12)
+
+
+def mnist_svhn_conv_experiment(seed=1):
+    rand_seed(seed)
+    env_config = ExperimentConfig(
+        dataset=mnist_svhn_16000,
+        model=simple_softmax_conv_model,
+        interval=2000,
+        epochs=20,
+        l2_reg=0.02,
+        loss='ce')
+    print("\n\nOracle Target")
+    fit_target(env_config)
+    print("\n\n Gradual bootstrap:")
+    gradual_bootstrap(env_config)
+    print("\n\n Direct boostrap to target:")
+    direct_bootstrap(env_config, num_inter=0, num_rounds=12)
+    print("\n\n Direct boostrap to all unsup data:")
+    direct_bootstrap(env_config, num_inter=22000, num_rounds=12)
+
 
 def rotated_mnist_35_linear_experiment(seed=1):
     rand_seed(seed)
@@ -797,12 +886,28 @@ def gradual_bootstrap(env_config):
         interval=env_config.interval, epochs=env_config.epochs, loss=env_config.loss)
 
 
+def fit_target(env_config):
+    dataset = env_config.dataset
+    split_data = get_split_data(dataset)
+    sup_model = env_config.model(
+        dataset.n_classes, input_shape=dataset.input_shape, l2_reg=env_config.l2_reg)
+    loss = get_loss(env_config.loss, sup_model.output_shape[1])
+    sup_model.compile(optimizer='adam',
+                      loss=[loss],
+                      metrics=[metrics.sparse_categorical_accuracy])
+    for i in range(10):
+        sup_model.fit(split_data.target_unsup_x, split_data.debug_target_unsup_y, verbose=True, epochs=5)
+        sup_model.evaluate(split_data.target_val_x, split_data.target_val_y)
+
+
 def main():
+    # mnist_svhn_linear_experiment()
+    mnist_svhn_conv_experiment()
     # rotated_cifar10_conv_features_35_experiment()
     # rotated_cifar10_features_35_linear_experiment()
     # rotated_cifar10_35_conv_experiment()
     # rotated_mnist_35_conv_experiment()
-    rotated_mnist_35_linear_experiment(0)
+    # rotated_mnist_35_linear_experiment(0)
     # rotated_mnist_35_linear_normalized_experiment(0)
     # rotated_mnist_35_linear_ramp_experiment()
     # rotated_mnist_35_linear_softmax_experiment()
