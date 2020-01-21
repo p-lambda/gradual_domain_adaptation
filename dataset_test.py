@@ -72,8 +72,8 @@ def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
 
 
 
-# save_mnist_32()
-xs, ys = make_mnist_svhn_dataset(10000, 0.9, 0.1)
+save_mnist_32()
+# xs, ys = make_mnist_svhn_dataset(10000, 0.9, 0.1)
 # print(xs.shape, ys.shape)
 # ex_0 = xs[ys == 0][0]
 # plt.imshow(ex_0)
