@@ -127,7 +127,7 @@ def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
     scipy.io.savemat('./' + save_file, mdict={'Xs': Xs, 'Ys': Ys})
 
 
-def load_faces_data(load_file='dataset_32x32.mat'):
+def load_portraits_data(load_file='dataset_32x32.mat'):
     data = scipy.io.loadmat('./' + load_file)
     return data['Xs'], data['Ys'][0]
 
@@ -477,8 +477,8 @@ SplitData = collections.namedtuple('SplitData',
     ('src_train_x src_val_x src_train_y src_val_y target_unsup_x target_val_x final_target_test_x '
      'debug_target_unsup_y target_val_y final_target_test_y inter_x inter_y'))
 
-faces = Dataset(
-    get_data = lambda: load_faces_data(),
+portraits = Dataset(
+    get_data = lambda: load_portraits_data(),
     n_src_train = 1000,
     n_src_valid = 1000,
     n_target_unsup = 2000,
@@ -922,10 +922,10 @@ def gauss_50D_low_noise_linear_experiment(seed=1):
     gradual_bootstrap(env_config)
 
 
-def faces_linear_experiment(seed=1):
+def portraits_linear_experiment(seed=1):
     rand_seed(seed)
     env_config = ExperimentConfig(
-        dataset=faces,
+        dataset=portraits,
         model=linear_model,
         interval=1000,
         epochs=20,
@@ -934,10 +934,10 @@ def faces_linear_experiment(seed=1):
     gradual_bootstrap(env_config)
 
 
-def faces_conv_experiment(seed=1):
+def portraits_conv_experiment(seed=1):
     rand_seed(seed)
     env_config = ExperimentConfig(
-        dataset=faces,
+        dataset=portraits,
         model=simple_softmax_conv_model,
         interval=2000,
         epochs=20,
@@ -1013,8 +1013,8 @@ def main():
     # rotated_mnist_35_nneighbor_experiment()
     # gauss_2D_high_noise_linear_experiment()
     # gauss_50D_low_noise_linear_experiment()
-    # faces_linear_experiment()
-    # faces_conv_experiment()
+    # portraits_linear_experiment()
+    # portraits_conv_experiment()
     # gauss_2D_high_noise_nn_experiment()
     # gauss_50D_low_noise_linear_experiment()
 
