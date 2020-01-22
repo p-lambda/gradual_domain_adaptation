@@ -105,7 +105,7 @@ def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
     return xs, ys
 
 
-def make_rotated_dataset(dataset, start_angle, end_angle, num_points):
+def make_rotated_dataset_continuous(dataset, start_angle, end_angle, num_points):
     images, labels = [], []
     (train_x, train_y), (_, _) = dataset.load_data()
     train_x, train_y = shuffle(train_x, train_y)
@@ -226,3 +226,55 @@ def get_split_data(dataset):
         inter_x=inter_x,
         inter_y=inter_y,
     )
+
+
+def get_preprocessed_mnist():
+    (train_x, train_y), (test_x, test_y) = mnist.load_data()
+    train_x, test_x = train_x / 255.0, test_x / 255.0
+    train_x, train_y = shuffle(train_x, train_y)
+    train_x = np.expand_dims(np.array(train_x), axis=-1)
+    test_x = np.expand_dims(np.array(test_x), axis=-1)
+    return (train_x, train_y), (test_x, test_y)
+
+
+def sample_rotate_images(xs, start_angle, end_angle):
+    new_xs = []
+    num_points = xs.shape[0]
+    for i in range(num_points):
+        angle = np.random.uniform(low=start_angle, high=end_angle)
+        img = ndimage.rotate(xs[i], angle, reshape=False)
+        new_xs.append(img)
+    return np.array(new_xs)
+
+
+def continually_rotate_images(xs, start_angle, end_angle):
+    new_xs = []
+    num_points = xs.shape[0]
+    for i in range(num_points):
+        angle = float(end_angle - start_angle) / num_points * i + start_angle
+        img = ndimage.rotate(xs[i], angle, reshape=False)
+        new_xs.append(img)
+    return np.array(new_xs)
+
+
+def make_rotated_dataset(train_x, train_y, test_x, test_y,
+                         source_angles, inter_angles, target_angles,
+                         src_train_end, src_val_end, inter_end, target_end):
+    assert(target_end <= train_x.shape[0])
+    assert(train_x.shape[0] == train_y.shape[0])
+    src_tr_x, src_tr_y = train_x[:src_train_end], train_y[:src_train_end]
+    src_tr_x = sample_rotate_images(src_tr_x, source_angles[0], source_angles[1])
+    src_val_x, src_val_y = train_x[src_train_end:src_val_end], train_y[src_train_end:src_val_end]
+    src_val_x = sample_rotate_images(src_val_x, source_angles[0], source_angles[1])
+    tmp_inter_x, inter_y = train_x[src_val_end:inter_end], train_y[src_val_end:inter_end]
+    inter_x = continually_rotate_images(tmp_inter_x, inter_angles[0], inter_angles[1])
+    dir_inter_x = sample_rotate_images(tmp_inter_x, target_angles[0], target_angles[1])
+    dir_inter_y = inter_y
+    assert(inter_x.shape == dir_inter_x.shape)
+    trg_val_x, trg_val_y = train_x[inter_end:target_end], train_y[inter_end:target_end]
+    trg_val_x = sample_rotate_images(trg_val_x, target_angles[0], target_angles[1])
+    trg_test_x, trg_test_y = test_x, test_y
+    trg_test_x = sample_rotate_images(trg_test_x, target_angles[0], target_angles[1])
+    return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
+            dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+

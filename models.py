@@ -55,6 +55,21 @@ def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
     ])
 
 
+def keras_mnist_model(num_labels, input_shape=(28,28,1)):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Conv2D(32, kernel_size=(3, 3),
+                     activation='relu',
+                     input_shape=input_shape))
+    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(keras.layers.Dropout(0.25))
+    model.add(keras.layers.Flatten())
+    model.add(keras.layers.Dense(128, activation='relu'))
+    model.add(keras.layers.Dropout(0.5))
+    model.add(keras.layers.Dense(num_labels, activation='softmax'))
+    return model
+
+
 def papernot_softmax_model(num_labels, input_shape=(28,28,1), l2_reg=0.0):
     papernot_conv_model = keras.models.Sequential([
      keras.layers.Conv2D(64, (8, 8), (2,2), activation=tf.nn.relu,

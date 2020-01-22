@@ -11,7 +11,7 @@ def self_train_once(student, teacher, unsup_x, confidence_q=0.1, epochs=20):
     alpha = np.quantile(confidence, confidence_q)
     indices = np.argwhere(confidence >= alpha)[:, 0]
     preds = np.argmax(logits, axis=1)
-    student.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=False)
+    student.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=True)
 
 
 def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repeats=1,
@@ -21,7 +21,7 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
         student = student_func(teacher)
         self_train_once(student, teacher, unsup_x, confidence_q, epochs)
         if target_x is not None and target_y is not None:
-            _, accuracy = student.evaluate(target_x, target_y)
+            _, accuracy = student.evaluate(target_x, target_y, verbose=True)
             accuracies.append(accuracy)
         teacher = student
     return accuracies, student
