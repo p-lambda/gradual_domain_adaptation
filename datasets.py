@@ -278,3 +278,38 @@ def make_rotated_dataset(train_x, train_y, test_x, test_y,
     return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
 
+
+def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
+    Xs, Ys = [], []
+    datagen = ImageDataGenerator(rescale=1./255)
+    data_generator = datagen.flow_from_directory(
+        'dataset_32x32/', shuffle=False, **image_options)
+    while True:
+        next_x, next_y = data_generator.next()
+        Xs.append(next_x)
+        Ys.append(next_y)
+        if data_generator.batch_index == 0:
+            break
+    Xs = np.concatenate(Xs)
+    Ys = np.concatenate(Ys)
+    filenames = [f[2:] for f in data_generator.filenames]
+    filenames_idx = list(zip(filenames, range(len(filenames))))
+    filenames_idx = [(f, i) for f, i in zip(filenames, range(len(filenames)))]
+                     # if f[5:8] == 'Cal' or f[5:8] == 'cal']
+    indices = [i for f, i in sorted(filenames_idx)]
+    # print(filenames)
+    # sort_indices = np.argsort(filenames)
+    # We need to sort only by year, and not have correlation with state.
+    # print state stats? print gender stats? print school stats?
+    # E.g. if this changes a lot by year, then we might want to do some grouping.
+    # Maybe print out number per year, and then we can decide on a grouping? Or algorithmically decide?
+    Xs = Xs[indices]
+    Ys = Ys[indices]
+    scipy.io.savemat('./' + save_file, mdict={'Xs': Xs, 'Ys': Ys})
+
+
+def load_portraits_data(load_file='dataset_32x32.mat'):
+    data = scipy.io.loadmat('./' + load_file)
+    return data['Xs'], data['Ys'][0]
+
+

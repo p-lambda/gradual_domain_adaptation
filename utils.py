@@ -1,6 +1,11 @@
 
 import numpy as np
 from tensorflow.keras.models import load_model
+import tensorflow as tf
+
+def rand_seed(seed):
+    np.random.seed(seed)
+    tf.compat.v1.set_random_seed(seed)
 
 
 def self_train_once(student, teacher, unsup_x, confidence_q=0.1, epochs=20):
@@ -11,7 +16,7 @@ def self_train_once(student, teacher, unsup_x, confidence_q=0.1, epochs=20):
     alpha = np.quantile(confidence, confidence_q)
     indices = np.argwhere(confidence >= alpha)[:, 0]
     preds = np.argmax(logits, axis=1)
-    student.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=True)
+    student.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=False)
 
 
 def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repeats=1,

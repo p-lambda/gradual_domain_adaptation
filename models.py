@@ -48,6 +48,7 @@ def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
                            padding='same'),
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
                            padding='same'),
+    keras.layers.Dropout(0.5),
     keras.layers.BatchNormalization(),
     keras.layers.Flatten(name='after_flatten'),
     # keras.layers.Dense(64, activation=tf.nn.relu),
