@@ -998,7 +998,7 @@ def fit_target(env_config, loops=10, epochs_per_loop=5):
 
 def main():
     # svhn_mnist_conv_experiment()
-    rotated_mnist_60_conv_experiment()
+    # rotated_mnist_60_conv_experiment()
     # mnist_semisup_conv_experiment()
     # mnist_svhn_linear_experiment()
     # mnist_svhn_conv_experiment()
@@ -1014,7 +1014,7 @@ def main():
     # gauss_2D_high_noise_linear_experiment()
     # gauss_50D_low_noise_linear_experiment()
     # portraits_linear_experiment()
-    # portraits_conv_experiment()
+    portraits_conv_experiment()
     # gauss_2D_high_noise_nn_experiment()
     # gauss_50D_low_noise_linear_experiment()
 

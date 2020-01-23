@@ -56,6 +56,20 @@ def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
     ])
 
 
+def unregularized_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0):
+    return keras.models.Sequential([
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same', input_shape=input_shape),
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same'),
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same'),
+    keras.layers.Flatten(name='after_flatten'),
+    # keras.layers.Dense(64, activation=tf.nn.relu),
+    keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out')
+    ])
+
+
 def keras_mnist_model(num_labels, input_shape=(28,28,1)):
     model = keras.models.Sequential()
     model.add(keras.layers.Conv2D(32, kernel_size=(3, 3),

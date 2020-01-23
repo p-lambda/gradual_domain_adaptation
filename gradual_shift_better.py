@@ -79,7 +79,7 @@ def run_experiment(
             student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
             target_y=trg_eval_y, repeats=20)
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
-    run(1)
+    run(3)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -90,8 +90,17 @@ def rotated_mnist_60_conv_experiment():
             5000, 6000, 48000, 50000)
     run_experiment(
         dataset_func=data_func, n_classes=10, input_shape=(28, 28, 1), num_trials=5,
-        save_file='saved_files/rot_mnist_50_conv_experiments.dat',
+        save_file='saved_files/rot_mnist_60_conv_experiments.dat',
         model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce')
+
+
+def portraits_conv_experiment():
+    def data_func():
+        return datasets.make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000)
+    run_experiment(
+        dataset_func=data_func, n_classes=2, input_shape=(32, 32, 1), num_trials=5,
+        save_file='saved_files/portraits_experiment.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce')
 
 
 
@@ -142,5 +151,6 @@ def rotated_mnist_60_conv_experiment():
 
 
 if __name__ == "__main__":
-    rotated_mnist_60_conv_experiment()
+    portraits_conv_experiment()
+    # rotated_mnist_60_conv_experiment()
     # rotated_mnist_60_conv_experiment()

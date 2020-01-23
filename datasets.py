@@ -241,7 +241,10 @@ def sample_rotate_images(xs, start_angle, end_angle):
     new_xs = []
     num_points = xs.shape[0]
     for i in range(num_points):
-        angle = np.random.uniform(low=start_angle, high=end_angle)
+        if start_angle == end_angle:
+            angle = start_angle
+        else:
+            angle = np.random.uniform(low=start_angle, high=end_angle)
         img = ndimage.rotate(xs[i], angle, reshape=False)
         new_xs.append(img)
     return np.array(new_xs)
@@ -279,6 +282,20 @@ def make_rotated_dataset(train_x, train_y, test_x, test_y,
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
 
 
+def make_population_rotated_dataset(xs, ys, delta_angle, num_angles):
+    images, labels = [], []
+    for i in range(num_angles):
+        cur_angle = i * delta_angle
+        cur_images = sample_rotate_images(xs, cur_angle, cur_angle)
+        images.append(cur_images)
+        labels.append(ys)
+    images = np.concatenate(images, axis=0)
+    labels = np.concatenate(labels, axis=0)
+    assert images.shape[1:] == xs.shape[1:]
+    assert labels.shape[1:] == ys.shape[1:]
+    return images, labels
+
+
 def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
     Xs, Ys = [], []
     datagen = ImageDataGenerator(rescale=1./255)
@@ -313,3 +330,18 @@ def load_portraits_data(load_file='dataset_32x32.mat'):
     return data['Xs'], data['Ys'][0]
 
 
+def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst):
+    xs, ys = load_portraits_data()
+    src_end = n_src_tr + n_src_val
+    inter_end = src_end + n_inter
+    trg_end = inter_end + n_trg_val + n_trg_tst
+    src_x, src_y = shuffle(xs[:src_end], ys[:src_end])
+    trg_x, trg_y = shuffle(xs[inter_end:trg_end], ys[inter_end:trg_end])
+    [src_tr_x, src_val_x] = split_sizes(src_x, [n_src_tr])
+    [src_tr_y, src_val_y] = split_sizes(src_y, [n_src_tr])
+    [trg_val_x, trg_test_x] = split_sizes(trg_x, [n_trg_val])
+    [trg_val_y, trg_test_y] = split_sizes(trg_y, [n_trg_val])
+    inter_x, inter_y = xs[src_end:inter_end], ys[src_end:inter_end]
+    dir_inter_x, dir_inter_y = inter_x[-n_target_unsup:], inter_y[-n_target_unsup:]
+    return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
+            dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
