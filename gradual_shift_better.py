@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import metrics
 from tensorflow.keras.datasets import mnist
+import pickle
 
 
 def compile_model(model, loss='ce'):
@@ -38,10 +39,11 @@ def train_model_source(model, split_data, epochs=1000):
 
 
 def run_experiment(
-    dataset_func, n_classes, input_shape, num_trials, save_file,
-    model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce'):
+    dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
+    interval=2000, epochs=10, loss='ce', num_runs=20):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    num_repeats = int(inter_x.shape[0] / interval)
     def new_model():
         model = model_func(n_classes, input_shape=input_shape)
         compile_model(model, loss)
@@ -71,15 +73,50 @@ def run_experiment(
         teacher.set_weights(source_model.get_weights())
         target_accuracies, _ = utils.self_train(
             student_func, teacher, dir_inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=20)
+            target_y=trg_eval_y, repeats=num_repeats)
         print("\n\n Direct boostrap to all unsup data:")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         all_accuracies, _ = utils.self_train(
             student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=20)
+            target_y=trg_eval_y, repeats=num_repeats)
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
-    run(3)
+    results = []
+    for i in range(num_runs):
+        results.append(run(i))
+    print('Saving to ' + save_file)
+    pickle.dump(results, open(save_file, "wb"))
+
+
+def experiment_results(save_name):
+    results = pickle.load(open(save_name, "rb"))
+    src_accs, target_accs = [], []
+    final_graduals, final_targets, final_alls = [], [], []
+    best_targets, best_alls = [], []
+    for src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies in results:
+        src_accs.append(100 * src_acc)
+        target_accs.append(100 * target_acc)
+        final_graduals.append(100 * gradual_accuracies[-1])
+        final_targets.append(100 * target_accuracies[-1])
+        final_alls.append(100 * all_accuracies[-1])
+        best_targets.append(100 * np.max(target_accuracies))
+        best_alls.append(100 * np.max(all_accuracies))
+    num_runs = len(src_accs)
+    mult = 1.645  # For 90% confidence intervals
+    print("Source accuracy (%): ", np.mean(src_accs),
+          mult * np.std(src_accs) / np.sqrt(num_runs))
+    print("Target accuracy (%): ", np.mean(target_accs),
+          mult * np.std(target_accs) / np.sqrt(num_runs))
+    print("Gradual accuracy (%): ", np.mean(final_graduals),
+          mult * np.std(final_graduals) / np.sqrt(num_runs))
+    print("Target accuracy (%): ", np.mean(final_targets),
+          mult * np.std(final_targets) / np.sqrt(num_runs))
+    print("All accuracy (%): ", np.mean(final_alls),
+          mult * np.std(final_alls) / np.sqrt(num_runs))
+    print("Best of Target accuracy (%): ", np.mean(best_targets),
+          mult * np.std(best_targets) / np.sqrt(num_runs))
+    print("Best of All accuracy (%): ", np.mean(best_alls),
+          mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
 def rotated_mnist_60_conv_experiment():
@@ -89,19 +126,34 @@ def rotated_mnist_60_conv_experiment():
             train_x, train_y, test_x, test_y, [0.0, 5.0], [5.0, 60.0], [55.0, 60.0],
             5000, 6000, 48000, 50000)
     run_experiment(
-        dataset_func=data_func, n_classes=10, input_shape=(28, 28, 1), num_trials=5,
-        save_file='saved_files/rot_mnist_60_conv_experiments.dat',
-        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce')
+        dataset_func=data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/rot_mnist_60_conv.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
+        num_runs=5)
 
 
 def portraits_conv_experiment():
     def data_func():
         return datasets.make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000)
     run_experiment(
-        dataset_func=data_func, n_classes=2, input_shape=(32, 32, 1), num_trials=5,
-        save_file='saved_files/portraits_experiment.dat',
-        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce')
+        dataset_func=data_func, n_classes=2, input_shape=(32, 32, 1),
+        save_file='saved_files/portraits.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
+        num_runs=5)
 
+
+def gaussian_linear_experiment():
+    d = 100
+    def data_func():
+        return datasets.make_high_d_gaussian_data(
+            d=d, min_var=0.05, max_var=0.1,
+            source_alphas=[0.0, 0.0], inter_alphas=[0.0, 1.0], target_alphas=[1.0, 1.0],
+            n_src_tr=500, n_src_val=1000, n_inter=5000, n_trg_val=1000, n_trg_tst=1000)
+    run_experiment(
+        dataset_func=data_func, n_classes=2, input_shape=(d,),
+        save_file='saved_files/gaussian.dat',
+        model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
+        num_runs=5)
 
 
 # def rotated_mnist_60_conv_experiment(seed=1):
@@ -151,6 +203,9 @@ def portraits_conv_experiment():
 
 
 if __name__ == "__main__":
-    portraits_conv_experiment()
+    # portraits_conv_experiment()
+    # experiment_results('saved_files/portraits.dat')
     # rotated_mnist_60_conv_experiment()
-    # rotated_mnist_60_conv_experiment()
+    # experiment_results('saved_files/rot_mnist_60_conv.dat')
+    gaussian_linear_experiment()
+    # experiment_results('saved_files/gaussian.dat')

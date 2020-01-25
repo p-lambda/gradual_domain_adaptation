@@ -39,13 +39,13 @@ import numpy as np
 #     copyfile('./M/' + file, './new_images/M/' + file)
 
 # Resize images.
-def resize(path):
+def resize(path, size=64):
     dirs = os.listdir(path)
     for item in dirs:
         if os.path.isfile(path+item):
             im = Image.open(path+item)
             f, e = os.path.splitext(path+item)
-            imResize = im.resize((32,32), Image.ANTIALIAS)
+            imResize = im.resize((size,size), Image.ANTIALIAS)
             imResize.save(f + '.png', 'PNG')
 
 # for i in ['./old_images/', './new_images/']:
@@ -53,5 +53,5 @@ def resize(path):
 #         for k in ['F/', 'M/']:
 #             resize(i + j + k)
 
-for folder in ['./dataset_32x32/M/', './dataset_32x32/F/']:
-    resize(folder)
+for folder in ['./dataset_64x64/M/', './dataset_64x64/F/']:
+    resize(folder, size=64)

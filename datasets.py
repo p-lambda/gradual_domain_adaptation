@@ -6,6 +6,7 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.datasets import cifar10
 import scipy.io
 from scipy import ndimage
+from scipy.stats import ortho_group
 import sklearn.preprocessing
 
 
@@ -16,46 +17,6 @@ Dataset = collections.namedtuple('Dataset',
 SplitData = collections.namedtuple('SplitData',
     ('src_train_x src_val_x src_train_y src_val_y target_unsup_x target_val_x final_target_test_x '
      'debug_target_unsup_y target_val_y final_target_test_y inter_x inter_y'))
-
-
-def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
-    image_options = {
-        'target_size': (32, 32),
-        'batch_size': 100,
-        'class_mode': 'binary',
-        'color_mode': 'grayscale',
-    }
-    Xs, Ys = [], []
-    datagen = ImageDataGenerator(rescale=1./255)
-    data_generator = datagen.flow_from_directory(
-        'dataset_32x32/', shuffle=False, **image_options)
-    while True:
-        next_x, next_y = data_generator.next()
-        Xs.append(next_x)
-        Ys.append(next_y)
-        if data_generator.batch_index == 0:
-            break
-    Xs = np.concatenate(Xs)
-    Ys = np.concatenate(Ys)
-    filenames = [f[2:] for f in data_generator.filenames]
-    filenames_idx = list(zip(filenames, range(len(filenames))))
-    filenames_idx = [(f, i) for f, i in zip(filenames, range(len(filenames)))]
-                     # if f[5:8] == 'Cal' or f[5:8] == 'cal']
-    indices = [i for f, i in sorted(filenames_idx)]
-    # print(filenames)
-    # sort_indices = np.argsort(filenames)
-    # We need to sort only by year, and not have correlation with state.
-    # print state stats? print gender stats? print school stats?
-    # E.g. if this changes a lot by year, then we might want to do some grouping.
-    # Maybe print out number per year, and then we can decide on a grouping? Or algorithmically decide?
-    Xs = Xs[indices]
-    Ys = Ys[indices]
-    scipy.io.savemat('./' + save_file, mdict={'Xs': Xs, 'Ys': Ys})
-
-
-def load_faces_data(load_file='dataset_32x32.mat'):
-    data = scipy.io.loadmat('./' + load_file)
-    return data['Xs'], data['Ys'][0]
 
 
 def split_sizes(array, sizes):
@@ -142,38 +103,132 @@ def make_mnist():
     return np.expand_dims(train_x, axis=-1), train_y
 
 
-def make_moving_gaussians(source_means, source_sigmas, target_means, target_sigmas, steps):
-    def shape_means(means):
+# Gaussian dataset.
+
+def shape_means(means):
         means = np.array(means)
         if len(means.shape) == 1:
             means = np.expand_dims(means, axis=-1)
         else:
             assert(len(means.shape) == 2)
         return means
-    def shape_sigmas(sigmas, means):
-        sigmas = np.array(sigmas)
-        shape_len = len(sigmas.shape)
-        assert(shape_len == 1 or shape_len == 3)
-        if shape_len == 1:
-            c = np.expand_dims(np.expand_dims(sigmas, axis=-1), axis=-1)
-            d = means.shape[1]
-            new_sigmas = c * np.eye(d)
-            assert(new_sigmas.shape == (sigmas.shape[0], d, d))
-        return new_sigmas
+
+
+def shape_sigmas(sigmas, means):
+    sigmas = np.array(sigmas)
+    shape_len = len(sigmas.shape)
+    assert(shape_len == 1 or shape_len == 3)
+    new_sigmas = sigmas
+    if shape_len == 1:
+        c = np.expand_dims(np.expand_dims(sigmas, axis=-1), axis=-1)
+        d = means.shape[1]
+        new_sigmas = c * np.eye(d)
+        assert(new_sigmas.shape == (sigmas.shape[0], d, d))
+    return new_sigmas
+
+
+def get_gaussian_at_alpha(source_means, source_sigmas, target_means, target_sigmas, alpha):
+    num_classes = source_means.shape[0]
+    class_prob = 1.0 / num_classes
+    y = np.argmax(np.random.multinomial(1, [class_prob] * num_classes))
+    mean = source_means[y] * (1 - alpha) + target_means[y] * alpha
+    sigma = source_sigmas[y] * (1 - alpha) + target_sigmas[y] * alpha
+    x = np.random.multivariate_normal(mean, sigma)
+    return x, y
+
+
+def sample_gaussian_alpha(source_means, source_sigmas, target_means, target_sigmas,
+                          alpha_low, alpha_high, N):
     source_means = shape_means(source_means)
     target_means = shape_means(target_means)
     source_sigmas = shape_sigmas(source_sigmas, source_means)
     target_sigmas = shape_sigmas(target_sigmas, target_means)
-    num_classes = source_means.shape[0]
-    class_prob = 1.0 / num_classes
-    xs = []
-    ys = []
+    xs, ys = [], []
+    for i in range(N):
+        if alpha_low == alpha_high:
+            alpha = alpha_low
+        else:
+            alpha = np.random.uniform(low=alpha_low, high=alpha_high)
+        x, y = get_gaussian_at_alpha(
+            source_means, source_sigmas, target_means, target_sigmas, alpha)
+        xs.append(x)
+        ys.append(y)
+    return np.array(xs), np.array(ys)
+
+
+def continual_gaussian_alpha(source_means, source_sigmas, target_means, target_sigmas,
+                             alpha_low, alpha_high, N):
+    source_means = shape_means(source_means)
+    target_means = shape_means(target_means)
+    source_sigmas = shape_sigmas(source_sigmas, source_means)
+    target_sigmas = shape_sigmas(target_sigmas, target_means)
+    xs, ys = [], []
+    for i in range(N):
+        alpha = float(alpha_high - alpha_low) / N * i + alpha_low
+        x, y = get_gaussian_at_alpha(
+            source_means, source_sigmas, target_means, target_sigmas, alpha)
+        xs.append(x)
+        ys.append(y)
+    return np.array(xs), np.array(ys)
+
+
+def make_moving_gaussian_data(
+    source_means, source_sigmas, target_means, target_sigmas,
+    source_alphas, inter_alphas, target_alphas,
+    n_src_tr, n_src_val, n_inter, n_trg_val, n_trg_tst):
+    src_tr_x, src_tr_y = sample_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        source_alphas[0], source_alphas[1], N=n_src_tr)
+    src_val_x, src_val_y = sample_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        source_alphas[0], source_alphas[1], N=n_src_val)
+    inter_x, inter_y = continual_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        inter_alphas[0], inter_alphas[1], N=n_inter)
+    dir_inter_x, dir_inter_y = sample_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        target_alphas[0], target_alphas[1], N=n_inter)
+    trg_val_x, trg_val_y = sample_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        target_alphas[0], target_alphas[1], N=n_trg_val)
+    trg_test_x, trg_test_y = sample_gaussian_alpha(
+        source_means, source_sigmas, target_means, target_sigmas,
+        target_alphas[0], target_alphas[1], N=n_trg_tst)
+    return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
+            dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+
+
+def make_high_d_gaussian_data(
+    d, min_var, max_var, source_alphas, inter_alphas, target_alphas,
+    n_src_tr, n_src_val, n_inter, n_trg_val, n_trg_tst):
+    assert(min_var > 0)
+    means, var_list = [], []
+    for i in range(4):
+        means.append(np.random.multivariate_normal(np.zeros(d), np.eye(d)))
+        means[i] = means[i] / np.linalg.norm(means[i])
+        # Generate diagonal.
+        diag = np.diag(np.random.uniform(min_var, max_var, size=d))
+        rot = ortho_group.rvs(d)
+        var = np.matmul(rot, np.matmul(diag, np.linalg.inv(rot)))
+        var_list.append(var)
+    return make_moving_gaussian_data(
+        source_means=[means[0], means[1]], source_sigmas=[var_list[0], var_list[1]],
+        target_means=[means[2], means[3]], target_sigmas=[var_list[2], var_list[3]],
+        source_alphas=source_alphas, inter_alphas=inter_alphas, target_alphas=target_alphas,
+        n_src_tr=n_src_tr, n_src_val=n_src_val, n_inter=n_inter,
+        n_trg_val=n_trg_val, n_trg_tst=n_trg_tst)
+
+
+def make_moving_gaussians(source_means, source_sigmas, target_means, target_sigmas, steps):
+    source_means = shape_means(source_means)
+    target_means = shape_means(target_means)
+    source_sigmas = shape_sigmas(source_sigmas, source_means)
+    target_sigmas = shape_sigmas(target_sigmas, target_means)
     for i in range(steps):
-        y = np.argmax(np.random.multinomial(1, [class_prob] * num_classes))
         alpha = float(i) / (steps - 1)
         mean = source_means[y] * (1 - alpha) + target_means[y] * alpha
         sigma = source_sigmas[y] * (1 - alpha) + target_sigmas[y] * alpha
-        x = np.random.multivariate_normal(mean, sigma)
+        x, y = get_gaussian_at_alpha()
         xs.append(x)
         ys.append(y)
     return np.array(xs), np.array(ys)

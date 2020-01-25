@@ -40,6 +40,8 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
         student = student_func(teacher)
         cur_xs = unsup_x[interval*i:interval*(i+1)]
         cur_ys = debug_y[interval*i:interval*(i+1)]
+        # _, student = self_train(
+        #     student_func, teacher, unsup_x, confidence_q, epochs, repeats=2)
         self_train_once(student, teacher, cur_xs, confidence_q, epochs)
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
