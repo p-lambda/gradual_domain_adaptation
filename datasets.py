@@ -30,79 +30,6 @@ def shuffle(xs, ys):
     return xs[indices], ys[indices]
 
 
-# Synthetic Datasets.
-
-def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
-    data = scipy.io.loadmat('mnist32_train.mat')
-    mnist_x = data['X']
-    mnist_y = data['y']
-    mnist_y = np.squeeze(mnist_y)
-    mnist_x, mnist_y = shuffle(mnist_x, mnist_y)
-
-    data = scipy.io.loadmat('svhn_train_32x32.mat')
-    svhn_x = data['X']
-    svhn_x = svhn_x / 255.0
-    svhn_x = np.transpose(svhn_x, [3, 0, 1, 2])
-    svhn_y = data['y']
-    svhn_y = np.squeeze(svhn_y)
-    svhn_y[(svhn_y == 10)] = 0
-    svhn_x, svhn_y = shuffle(svhn_x, svhn_y)
-
-    delta = float(mnist_end_prob - mnist_start_prob) / (num_examples - 1)
-    mnist_probs = np.array([mnist_start_prob + delta * i for i in range(num_examples)])
-    # assert((np.all(mnist_end_prob >= mnist_probs) and np.all(mnist_probs >= mnist_start_prob)) or
-    #      (np.all(mnist_start_prob >= mnist_probs) and np.all(mnist_probs >= mnist_end_prob)))
-    domains = np.random.binomial(n=1, p=mnist_probs)
-    assert(domains.shape == (num_examples,))
-    mnist_indices = np.arange(num_examples)[domains == 1]
-    svhn_indices = np.arange(num_examples)[domains == 0]
-    assert(svhn_x.shape[1:] == mnist_x.shape[1:])
-    xs = np.empty((num_examples,) + tuple(svhn_x.shape[1:]), dtype='float32')
-    ys = np.empty((num_examples,), dtype='int32')
-    xs[mnist_indices] = mnist_x[:mnist_indices.size]
-    xs[svhn_indices] = svhn_x[:svhn_indices.size]
-    ys[mnist_indices] = mnist_y[:mnist_indices.size]
-    ys[svhn_indices] = svhn_y[:svhn_indices.size]
-    return xs, ys
-
-
-def make_rotated_dataset_continuous(dataset, start_angle, end_angle, num_points):
-    images, labels = [], []
-    (train_x, train_y), (_, _) = dataset.load_data()
-    train_x, train_y = shuffle(train_x, train_y)
-    train_x = train_x / 255.0
-    assert(num_points < train_x.shape[0])
-    indices = np.random.choice(train_x.shape[0], size=num_points, replace=False)
-    for i in range(num_points):
-        angle = float(end_angle - start_angle) / num_points * i + start_angle
-        idx = indices[i]
-        img = ndimage.rotate(train_x[idx], angle, reshape=False)
-        images.append(img)
-        labels.append(train_y[idx])
-    return np.array(images), np.array(labels)
-
-
-def make_rotated_mnist(start_angle, end_angle, num_points, normalize=False):
-    Xs, Ys = make_rotated_dataset(mnist, start_angle, end_angle, num_points)
-    if normalize:
-        Xs = np.reshape(Xs, (Xs.shape[0], -1))
-        old_mean = np.mean(Xs)
-        Xs = sklearn.preprocessing.normalize(Xs, norm='l2')
-        new_mean = np.mean(Xs)
-        Xs = Xs * (old_mean / new_mean)
-    return np.expand_dims(np.array(Xs), axis=-1), Ys
-
-
-def make_rotated_cifar10(start_angle, end_angle, num_points):
-    return make_rotated_dataset(cifar10, start_angle, end_angle, num_points)   
-
-
-def make_mnist():
-    (train_x, train_y), (_, _) = mnist.load_data()
-    train_x = train_x / 255.0
-    return np.expand_dims(train_x, axis=-1), train_y
-
-
 # Gaussian dataset.
 
 def shape_means(means):
@@ -315,9 +242,9 @@ def continually_rotate_images(xs, start_angle, end_angle):
     return np.array(new_xs)
 
 
-def make_rotated_dataset(train_x, train_y, test_x, test_y,
-                         source_angles, inter_angles, target_angles,
-                         src_train_end, src_val_end, inter_end, target_end):
+def _transition_rotation_dataset(train_x, train_y, test_x, test_y,
+                                 source_angles, target_angles, inter_func,
+                                 src_train_end, src_val_end, inter_end, target_end):
     assert(target_end <= train_x.shape[0])
     assert(train_x.shape[0] == train_y.shape[0])
     src_tr_x, src_tr_y = train_x[:src_train_end], train_y[:src_train_end]
@@ -325,9 +252,9 @@ def make_rotated_dataset(train_x, train_y, test_x, test_y,
     src_val_x, src_val_y = train_x[src_train_end:src_val_end], train_y[src_train_end:src_val_end]
     src_val_x = sample_rotate_images(src_val_x, source_angles[0], source_angles[1])
     tmp_inter_x, inter_y = train_x[src_val_end:inter_end], train_y[src_val_end:inter_end]
-    inter_x = continually_rotate_images(tmp_inter_x, inter_angles[0], inter_angles[1])
+    inter_x = inter_func(tmp_inter_x)
     dir_inter_x = sample_rotate_images(tmp_inter_x, target_angles[0], target_angles[1])
-    dir_inter_y = inter_y
+    dir_inter_y = np.array(inter_y)
     assert(inter_x.shape == dir_inter_x.shape)
     trg_val_x, trg_val_y = train_x[inter_end:target_end], train_y[inter_end:target_end]
     trg_val_x = sample_rotate_images(trg_val_x, target_angles[0], target_angles[1])
@@ -335,6 +262,44 @@ def make_rotated_dataset(train_x, train_y, test_x, test_y,
     trg_test_x = sample_rotate_images(trg_test_x, target_angles[0], target_angles[1])
     return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+
+
+def dial_rotation_proportions(xs, source_angles, target_angles):
+    N = xs.shape[0]
+    new_xs = []
+    rotate_ps = np.arange(N) / float(N - 1)
+    is_target = np.random.binomial(n=1, p=rotate_ps)
+    assert(is_target.shape == (N,))
+    print(is_target[:10], is_target[-10:])
+    for i in range(N):
+        if is_target[i]:
+            angle = np.random.uniform(low=target_angles[0], high=target_angles[1])
+        else:
+            angle = np.random.uniform(low=source_angles[0], high=source_angles[1])
+        if i < 10 or i > N - 10:
+            print(angle)
+        cur_x = ndimage.rotate(xs[i], angle, reshape=False)
+        new_xs.append(cur_x)
+    return np.array(new_xs)
+
+
+def dial_proportions_rotated_dataset(train_x, train_y, test_x, test_y,
+                                     source_angles, target_angles,
+                                     src_train_end, src_val_end, inter_end, target_end):
+    inter_func = lambda x: dial_rotation_proportions(
+        x, source_angles, target_angles)
+    return _transition_rotation_dataset(
+        train_x, train_y, test_x, test_y, source_angles, target_angles,
+        inter_func, src_train_end, src_val_end, inter_end, target_end)
+
+
+def make_rotated_dataset(train_x, train_y, test_x, test_y,
+                         source_angles, inter_angles, target_angles,
+                         src_train_end, src_val_end, inter_end, target_end):
+    inter_func = lambda x: continually_rotate_images(x, inter_angles[0], inter_angles[1])
+    return _transition_rotation_dataset(
+        train_x, train_y, test_x, test_y, source_angles, target_angles,
+        inter_func, src_train_end, src_val_end, inter_end, target_end)
 
 
 def make_population_rotated_dataset(xs, ys, delta_angle, num_angles):
@@ -350,6 +315,79 @@ def make_population_rotated_dataset(xs, ys, delta_angle, num_angles):
     assert labels.shape[1:] == ys.shape[1:]
     return images, labels
 
+
+def make_rotated_dataset_continuous(dataset, start_angle, end_angle, num_points):
+    images, labels = [], []
+    (train_x, train_y), (_, _) = dataset.load_data()
+    train_x, train_y = shuffle(train_x, train_y)
+    train_x = train_x / 255.0
+    assert(num_points < train_x.shape[0])
+    indices = np.random.choice(train_x.shape[0], size=num_points, replace=False)
+    for i in range(num_points):
+        angle = float(end_angle - start_angle) / num_points * i + start_angle
+        idx = indices[i]
+        img = ndimage.rotate(train_x[idx], angle, reshape=False)
+        images.append(img)
+        labels.append(train_y[idx])
+    return np.array(images), np.array(labels)
+
+
+def make_rotated_mnist(start_angle, end_angle, num_points, normalize=False):
+    Xs, Ys = make_rotated_dataset(mnist, start_angle, end_angle, num_points)
+    if normalize:
+        Xs = np.reshape(Xs, (Xs.shape[0], -1))
+        old_mean = np.mean(Xs)
+        Xs = sklearn.preprocessing.normalize(Xs, norm='l2')
+        new_mean = np.mean(Xs)
+        Xs = Xs * (old_mean / new_mean)
+    return np.expand_dims(np.array(Xs), axis=-1), Ys
+
+
+def make_rotated_cifar10(start_angle, end_angle, num_points):
+    return make_rotated_dataset(cifar10, start_angle, end_angle, num_points)   
+
+
+def make_mnist():
+    (train_x, train_y), (_, _) = mnist.load_data()
+    train_x = train_x / 255.0
+    return np.expand_dims(train_x, axis=-1), train_y
+
+
+def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
+    data = scipy.io.loadmat('mnist32_train.mat')
+    mnist_x = data['X']
+    mnist_y = data['y']
+    mnist_y = np.squeeze(mnist_y)
+    mnist_x, mnist_y = shuffle(mnist_x, mnist_y)
+
+    data = scipy.io.loadmat('svhn_train_32x32.mat')
+    svhn_x = data['X']
+    svhn_x = svhn_x / 255.0
+    svhn_x = np.transpose(svhn_x, [3, 0, 1, 2])
+    svhn_y = data['y']
+    svhn_y = np.squeeze(svhn_y)
+    svhn_y[(svhn_y == 10)] = 0
+    svhn_x, svhn_y = shuffle(svhn_x, svhn_y)
+
+    delta = float(mnist_end_prob - mnist_start_prob) / (num_examples - 1)
+    mnist_probs = np.array([mnist_start_prob + delta * i for i in range(num_examples)])
+    # assert((np.all(mnist_end_prob >= mnist_probs) and np.all(mnist_probs >= mnist_start_prob)) or
+    #      (np.all(mnist_start_prob >= mnist_probs) and np.all(mnist_probs >= mnist_end_prob)))
+    domains = np.random.binomial(n=1, p=mnist_probs)
+    assert(domains.shape == (num_examples,))
+    mnist_indices = np.arange(num_examples)[domains == 1]
+    svhn_indices = np.arange(num_examples)[domains == 0]
+    assert(svhn_x.shape[1:] == mnist_x.shape[1:])
+    xs = np.empty((num_examples,) + tuple(svhn_x.shape[1:]), dtype='float32')
+    ys = np.empty((num_examples,), dtype='int32')
+    xs[mnist_indices] = mnist_x[:mnist_indices.size]
+    xs[svhn_indices] = svhn_x[:svhn_indices.size]
+    ys[mnist_indices] = mnist_y[:mnist_indices.size]
+    ys[svhn_indices] = svhn_y[:svhn_indices.size]
+    return xs, ys
+
+
+# Portraits dataset.
 
 def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
     Xs, Ys = [], []

@@ -76,5 +76,3 @@ def save_model(model, filename):
 
 def load_model(filename):
     model = load_model(filename)
-
-

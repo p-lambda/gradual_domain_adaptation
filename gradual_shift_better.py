@@ -125,7 +125,7 @@ def portraits_conv_experiment():
 def gaussian_linear_experiment():
     d = 100        
     run_experiment(
-        dataset_func=datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
+        dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
         num_runs=5)
@@ -136,5 +136,5 @@ if __name__ == "__main__":
     # experiment_results('saved_files/portraits.dat')
     # rotated_mnist_60_conv_experiment()
     # experiment_results('saved_files/rot_mnist_60_conv.dat')
-    gaussian_linear_experiment()
-    # experiment_results('saved_files/gaussian.dat')
+    # gaussian_linear_experiment()
+    experiment_results('saved_files/gaussian.dat')
