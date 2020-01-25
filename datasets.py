@@ -400,3 +400,21 @@ def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val,
     dir_inter_x, dir_inter_y = inter_x[-n_target_unsup:], inter_y[-n_target_unsup:]
     return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+
+
+def rotated_mnist_60_data_func():
+    (train_x, train_y), (test_x, test_y) = datasets.get_preprocessed_mnist()
+    return make_rotated_dataset(
+        train_x, train_y, test_x, test_y, [0.0, 5.0], [5.0, 60.0], [55.0, 60.0],
+        5000, 6000, 48000, 50000)
+
+
+def portraits_data_func():
+    return make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000)
+
+
+def gaussian_data_func(d):
+    return make_high_d_gaussian_data(
+        d=d, min_var=0.05, max_var=0.1,
+        source_alphas=[0.0, 0.0], inter_alphas=[0.0, 1.0], target_alphas=[1.0, 1.0],
+        n_src_tr=500, n_src_val=1000, n_inter=5000, n_trg_val=1000, n_trg_tst=1000)
