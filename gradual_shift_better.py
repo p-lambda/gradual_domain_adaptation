@@ -131,10 +131,23 @@ def gaussian_linear_experiment():
         num_runs=5)
 
 
+def dialing_ratios_mnist_experiment():
+    run_experiment(
+        dataset_func=datasets.rotated_mnist_60_dialing_ratios_data_func,
+        n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/dialing_rot_mnist_60_conv.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
+        num_runs=5)
+
+
+
+
 if __name__ == "__main__":
     # portraits_conv_experiment()
     # experiment_results('saved_files/portraits.dat')
     # rotated_mnist_60_conv_experiment()
     # experiment_results('saved_files/rot_mnist_60_conv.dat')
     # gaussian_linear_experiment()
-    experiment_results('saved_files/gaussian.dat')
+    # experiment_results('saved_files/gaussian.dat')
+    dialing_ratios_mnist_experiment()
+    experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')

@@ -270,14 +270,11 @@ def dial_rotation_proportions(xs, source_angles, target_angles):
     rotate_ps = np.arange(N) / float(N - 1)
     is_target = np.random.binomial(n=1, p=rotate_ps)
     assert(is_target.shape == (N,))
-    print(is_target[:10], is_target[-10:])
     for i in range(N):
         if is_target[i]:
             angle = np.random.uniform(low=target_angles[0], high=target_angles[1])
         else:
             angle = np.random.uniform(low=source_angles[0], high=source_angles[1])
-        if i < 10 or i > N - 10:
-            print(angle)
         cur_x = ndimage.rotate(xs[i], angle, reshape=False)
         new_xs.append(cur_x)
     return np.array(new_xs)
@@ -441,9 +438,16 @@ def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val,
 
 
 def rotated_mnist_60_data_func():
-    (train_x, train_y), (test_x, test_y) = datasets.get_preprocessed_mnist()
+    (train_x, train_y), (test_x, test_y) = get_preprocessed_mnist()
     return make_rotated_dataset(
         train_x, train_y, test_x, test_y, [0.0, 5.0], [5.0, 60.0], [55.0, 60.0],
+        5000, 6000, 48000, 50000)
+
+
+def rotated_mnist_60_dialing_ratios_data_func():
+    (train_x, train_y), (test_x, test_y) = get_preprocessed_mnist()
+    return dial_proportions_rotated_dataset(
+        train_x, train_y, test_x, test_y, [0.0, 5.0], [55.0, 60.0],
         5000, 6000, 48000, 50000)
 
 
