@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import metrics
 from tensorflow.keras.datasets import mnist
+from tensorflow.keras.utils import to_categorical
 import pickle
 
 
@@ -27,9 +28,16 @@ def train_model_source(model, split_data, epochs=1000):
 
 def run_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    interval=2000, epochs=10, loss='ce', num_runs=20):
+    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    if soft:
+        src_tr_y = to_categorical(src_tr_y)
+        src_val_y = to_categorical(src_val_y)
+        trg_eval_y = to_categorical(trg_eval_y)
+        dir_inter_y = to_categorical(dir_inter_y)
+        inter_y = to_categorical(inter_y)
+        trg_test_y = to_categorical(trg_test_y)
     num_repeats = int(inter_x.shape[0] / interval)
     def new_model():
         model = model_func(n_classes, input_shape=input_shape)
@@ -51,7 +59,8 @@ def run_experiment(
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         gradual_accuracies, student = utils.gradual_self_train(
-            student_func, teacher, inter_x, inter_y, interval, epochs=epochs)
+            student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
+            confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         gradual_accuracies.append(acc)
         # Train to target.
@@ -60,13 +69,13 @@ def run_experiment(
         teacher.set_weights(source_model.get_weights())
         target_accuracies, _ = utils.self_train(
             student_func, teacher, dir_inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=num_repeats)
+            target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         print("\n\n Direct boostrap to all unsup data:")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         all_accuracies, _ = utils.self_train(
             student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=num_repeats)
+            target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
     results = []
     for i in range(num_runs):
@@ -111,7 +120,7 @@ def rotated_mnist_60_conv_experiment():
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file='saved_files/rot_mnist_60_conv.dat',
         model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
-        num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5)
 
 
 def portraits_conv_experiment():
@@ -119,7 +128,7 @@ def portraits_conv_experiment():
         dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
         save_file='saved_files/portraits.dat',
         model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
-        num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5)
 
 
 def gaussian_linear_experiment():
@@ -128,7 +137,39 @@ def gaussian_linear_experiment():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
-        num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5)
+
+def rotated_mnist_60_conv_experiment_noconf():
+    run_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/rot_mnist_60_conv_noconf.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
+        soft=False, conf_q=0.0, num_runs=5)
+
+
+def portraits_conv_experiment_noconf():
+    run_experiment(
+        dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
+        save_file='saved_files/portraits_noconf.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
+        soft=False, conf_q=0.0, num_runs=5)
+
+
+def gaussian_linear_experiment_noconf():
+    d = 100        
+    run_experiment(
+        dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
+        save_file='saved_files/gaussian_noconf.dat',
+        model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
+        soft=False, conf_q=0.0, num_runs=5)
+
+
+def portraits_64_conv_experiment():
+    run_experiment(
+        dataset_func=datasets.portraits_64_data_func, n_classes=2, input_shape=(64, 64, 1),
+        save_file='saved_files/portraits_64.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5)
 
 
 def dialing_ratios_mnist_experiment():
@@ -137,7 +178,7 @@ def dialing_ratios_mnist_experiment():
         n_classes=10, input_shape=(28, 28, 1),
         save_file='saved_files/dialing_rot_mnist_60_conv.dat',
         model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
-        num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5)
 
 
 
@@ -151,3 +192,11 @@ if __name__ == "__main__":
     # experiment_results('saved_files/gaussian.dat')
     dialing_ratios_mnist_experiment()
     experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
+
+    # Without confidence thresholding.
+    # portraits_conv_experiment_noconf()
+    # experiment_results('saved_files/portraits_noconf.dat')
+    # rotated_mnist_60_conv_experiment_noconf()
+    # experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
+    # gaussian_linear_experiment_noconf()
+    # experiment_results('saved_files/gaussian_noconf.dat')

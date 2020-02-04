@@ -6,13 +6,14 @@ import tensorflow as tf
 from tensorflow.keras import metrics
 import pickle
 import numpy as np
+from tensorflow.keras.utils import to_categorical
 
 
 def compile_model(model, loss='ce'):
     loss = models.get_loss(loss, model.output_shape[1])
     model.compile(optimizer='adam',
                   loss=[loss],
-                  metrics=[metrics.sparse_categorical_accuracy])
+                  metrics=['accuracy'])
 
 
 def student_func_gen(model_func, retrain, loss):
@@ -31,7 +32,12 @@ def student_func_gen(model_func, retrain, loss):
 def reg_vs_unreg_experiment(
     src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, trg_eval_x, trg_eval_y,
     n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
-    interval=2000, epochs=10, loss='ce', retrain=False, num_runs=20):
+    interval=2000, epochs=10, loss='ce', retrain=False, soft=False, num_runs=20):
+    if soft:
+        src_tr_y = to_categorical(src_tr_y)
+        src_val_y = to_categorical(src_val_y)
+        trg_eval_y = to_categorical(trg_eval_y)
+        inter_y = to_categorical(inter_y)
     def teacher_model():
         model = unreg_model_func(n_classes, input_shape=input_shape)
         compile_model(model, loss)
@@ -55,7 +61,7 @@ def reg_vs_unreg_experiment(
                 model_func=lambda: model_func(n_classes, input_shape=input_shape),
                 retrain=retrain, loss=loss)
             accuracies, student = utils.gradual_self_train(
-                student_func, teacher, inter_x, inter_y, interval, epochs=epochs)
+                student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft)
             _, acc = student.evaluate(trg_eval_x, trg_eval_y)
             accuracies.append(acc)
             return accuracies
@@ -92,18 +98,18 @@ def rotated_mnist_regularization_experiment(
     reg_vs_unreg_experiment(
         orig_x, orig_y, orig_x, orig_y, inter_x, inter_y, trg_x, trg_y,
         n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
-        interval, epochs, loss, retrain, num_runs)
+        interval, epochs, loss, retrain, soft=False, num_runs=num_runs)
 
 
 def finite_data_experiment(
     dataset_func, n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
-    interval=2000, epochs=10, loss='ce', retrain=False, num_runs=20):
+    interval=2000, epochs=10, loss='ce', retrain=False, soft=False, num_runs=20):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     reg_vs_unreg_experiment(
         src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, trg_val_x, trg_val_y,
         n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
-        interval, epochs, loss, retrain, num_runs)
+        interval, epochs, loss, retrain, soft=soft, num_runs=num_runs)
 
 
 def regularization_results(save_name):
@@ -130,9 +136,45 @@ def rotated_mnist_60_conv_experiment():
     finite_data_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file='saved_files/reg_vs_unreg_rot_mnist_60_conv.dat',
-        unreg_model_func=unregularized_softmax_conv_model,
+        unreg_model_func=models.unregularized_softmax_conv_model,
         reg_model_func=models.simple_softmax_conv_model,
-        interval=2000, epochs=10, loss='ce', num_runs=5)
+        interval=2000, epochs=10, loss='ce', soft=False, num_runs=5)
+
+
+def soft_rotated_mnist_60_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat',
+        unreg_model_func=models.unregularized_softmax_conv_model,
+        reg_model_func=models.simple_softmax_conv_model,
+        interval=2000, epochs=10, loss='categorical_ce', soft=True, num_runs=5)
+
+
+def retrain_soft_rotated_mnist_60_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.dat',
+        unreg_model_func=models.unregularized_softmax_conv_model,
+        reg_model_func=models.simple_softmax_conv_model,
+        interval=2000, epochs=10, loss='categorical_ce', soft=True, num_runs=5)
+
+
+def keras_retrain_soft_rotated_mnist_60_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.dat',
+        unreg_model_func=models.unregularized_keras_mnist_model,
+        reg_model_func=models.keras_mnist_model,
+        interval=2000, epochs=10, loss='categorical_ce', soft=True, num_runs=5)
+
+
+def deeper_retrain_soft_rotated_mnist_60_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/deeper_retrain_soft_rot_mnist_60_conv.dat',
+        unreg_model_func=models.deeper_softmax_conv_model,
+        reg_model_func=models.deeper_softmax_conv_model,
+        interval=2000, epochs=10, loss='categorical_ce', soft=True, num_runs=5)
 
 
 def portraits_data_func():
@@ -145,7 +187,16 @@ def portraits_conv_experiment():
         save_file='saved_files/reg_vs_unreg_portraits.dat',
         unreg_model_func=models.unregularized_softmax_conv_model,
         reg_model_func=models.simple_softmax_conv_model,
-        interval=2000, epochs=20, loss='ce', num_runs=5)
+        interval=2000, epochs=20, loss='ce', soft=False, num_runs=5)
+
+
+def soft_portraits_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
+        save_file='saved_files/reg_vs_unreg_soft_portraits.dat',
+        unreg_model_func=models.unregularized_softmax_conv_model,
+        reg_model_func=models.simple_softmax_conv_model,
+        interval=2000, epochs=20, loss='categorical_ce', soft=True, num_runs=5)
 
 
 def gaussian_data_func(d):
@@ -160,9 +211,28 @@ def gaussian_linear_experiment():
     finite_data_experiment(
         dataset_func=lambda: gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/reg_vs_unreg_gaussian.dat',
-        unreg_model_func=lambda k, shape: models.linear_softmax_model(k, shape, l2_reg=0.0),
+        unreg_model_func=lambda k, input_shape: models.linear_softmax_model(k, input_shape, l2_reg=0.0),
         reg_model_func=models.linear_softmax_model,
-        interval=500, epochs=100, loss='ce', num_runs=5)
+        interval=500, epochs=100, loss='ce', soft=False, num_runs=5)
+
+def soft_gaussian_linear_experiment():
+    d = 100        
+    finite_data_experiment(
+        dataset_func=lambda: gaussian_data_func(d), n_classes=2, input_shape=(d,),
+        save_file='saved_files/reg_vs_unreg_soft_gaussian.dat',
+        unreg_model_func=lambda k, input_shape: models.linear_softmax_model(k, input_shape, l2_reg=0.0),
+        reg_model_func=models.linear_softmax_model,
+        interval=500, epochs=100, loss='categorical_ce', soft=True, num_runs=5)
+
+
+def dialing_rotated_mnist_60_conv_experiment():
+    finite_data_experiment(
+        dataset_func=datasets.rotated_mnist_60_dialing_ratios_data_func, n_classes=10,
+        input_shape=(28, 28, 1),
+        save_file='saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat',
+        unreg_model_func=models.simple_softmax_conv_model,
+        reg_model_func=models.simple_softmax_conv_model,
+        interval=2000, epochs=10, loss='ce', soft=False, num_runs=5)
 
 
 if __name__ == "__main__":
@@ -171,10 +241,37 @@ if __name__ == "__main__":
     #     save_name_base='saved_files/inf_reg_mnist', N=5000, delta_angle=3, num_angles=20,
     #     retrain=False, num_runs=5)
     # regularization_results('saved_files/inf_reg_mnist_5000_3_20.dat')
+
+    # # Run all experiments comparing regularization vs no regularization.
+    # portraits_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_portraits.dat')
     # rotated_mnist_60_conv_experiment()
     # regularization_results('saved_files/reg_vs_unreg_rot_mnist_60_conv.dat')
-    portraits_conv_experiment()
-    # regularization_results('saved_files/reg_vs_unreg_portraits.dat')
     # gaussian_linear_experiment()
     # regularization_results('saved_files/reg_vs_unreg_gaussian.dat')
+
+    # # Run all experiments, soft labeling, comparing regularization vs no regularization.
+    # soft_portraits_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_soft_portraits.dat')
+    # soft_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat')
+    # soft_gaussian_linear_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_soft_gaussian.dat')
+
+    # Dialing ratios results.
+    dialing_rotated_mnist_60_conv_experiment()
+    regularization_results('saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat')
+
+    # # Soft labeling with simple model, don't retrain.
+    # soft_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat')
+    # # Try retraining the model each iteration.
+    # retrain_soft_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.dat')
+    # # Use the Keras MNIST model.
+    # keras_retrain_soft_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.dat')
+    # # Use a deeper (4 layer) conv net model.
+    # deeper_retrain_soft_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/deeper_retrain_soft_rot_mnist_60_conv.dat')
 

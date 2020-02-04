@@ -19,12 +19,20 @@ def self_train_once(student, teacher, unsup_x, confidence_q=0.1, epochs=20):
     student.fit(unsup_x[indices], preds[indices], epochs=epochs, verbose=False)
 
 
+def soft_self_train_once(student, teacher, unsup_x, epochs=20):
+    probs = teacher.predict(np.concatenate([unsup_x]))
+    student.fit(unsup_x, probs, epochs=epochs, verbose=False)
+
+
 def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repeats=1,
-               target_x=None, target_y=None):
+               target_x=None, target_y=None, soft=False):
     accuracies = []
     for i in range(repeats):
         student = student_func(teacher)
-        self_train_once(student, teacher, unsup_x, confidence_q, epochs)
+        if soft:
+            soft_self_train_once(student, teacher, unsup_x, epochs)
+        else:
+            self_train_once(student, teacher, unsup_x, confidence_q, epochs)
         if target_x is not None and target_y is not None:
             _, accuracy = student.evaluate(target_x, target_y, verbose=True)
             accuracies.append(accuracy)
@@ -33,7 +41,7 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
 
 
 def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confidence_q=0.1,
-                       epochs=20):
+                       epochs=20, soft=False):
     upper_idx = int(unsup_x.shape[0] / interval)
     accuracies = []
     for i in range(upper_idx):
@@ -42,12 +50,14 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
         cur_ys = debug_y[interval*i:interval*(i+1)]
         # _, student = self_train(
         #     student_func, teacher, unsup_x, confidence_q, epochs, repeats=2)
-        self_train_once(student, teacher, cur_xs, confidence_q, epochs)
+        if soft:
+            soft_self_train_once(student, teacher, cur_xs, epochs)
+        else:
+            self_train_once(student, teacher, cur_xs, confidence_q, epochs)
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
         teacher = student
     return accuracies, student
-
 
 
 def split_data(xs, ys, splits):
@@ -76,3 +86,17 @@ def save_model(model, filename):
 
 def load_model(filename):
     model = load_model(filename)
+
+
+def rolling_average(sequence, r):
+    N = sequence.shape[0]
+    assert r < N
+    assert r > 1
+    rolling_sums = []
+    cur_sum = sum(sequence[:r])
+    rolling_sums.append(cur_sum)
+    for i in range(r, N):
+        cur_sum = cur_sum + sequence[i] - sequence[i-r]
+        rolling_sums.append(cur_sum)
+    return np.array(rolling_sums) * 1.0 / r
+

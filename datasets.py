@@ -8,7 +8,8 @@ import scipy.io
 from scipy import ndimage
 from scipy.stats import ortho_group
 import sklearn.preprocessing
-
+import pickle
+import utils
 
 Dataset = collections.namedtuple('Dataset',
     'get_data n_src_train n_src_valid n_target_unsup n_target_val n_target_test target_end '
@@ -17,6 +18,13 @@ Dataset = collections.namedtuple('Dataset',
 SplitData = collections.namedtuple('SplitData',
     ('src_train_x src_val_x src_train_y src_val_y target_unsup_x target_val_x final_target_test_x '
      'debug_target_unsup_y target_val_y final_target_test_y inter_x inter_y'))
+
+
+image_options = {
+    'batch_size': 100,
+    'class_mode': 'binary',
+    'color_mode': 'grayscale',
+}
 
 
 def split_sizes(array, sizes):
@@ -28,6 +36,37 @@ def shuffle(xs, ys):
     indices = list(range(len(xs)))
     np.random.shuffle(indices)
     return xs[indices], ys[indices]
+
+
+def get_split_data(dataset):
+    Xs, Ys = dataset.get_data()
+    n_src = dataset.n_src_train + dataset.n_src_valid
+    n_target = dataset.n_target_unsup + dataset.n_target_val + dataset.n_target_test
+    src_x, src_y = shuffle(Xs[:n_src], Ys[:n_src])
+    target_x, target_y = shuffle(
+        Xs[dataset.target_end-n_target:dataset.target_end],
+        Ys[dataset.target_end-n_target:dataset.target_end])
+    [src_train_x, src_val_x] = split_sizes(src_x, [dataset.n_src_train])
+    [src_train_y, src_val_y] = split_sizes(src_y, [dataset.n_src_train])
+    [target_unsup_x, target_val_x, final_target_test_x] = split_sizes(
+        target_x, [dataset.n_target_unsup, dataset.n_target_val])
+    [debug_target_unsup_y, target_val_y, final_target_test_y] = split_sizes(
+        target_y, [dataset.n_target_unsup, dataset.n_target_val])
+    inter_x, inter_y = Xs[n_src:dataset.target_end-n_target], Ys[n_src:dataset.target_end-n_target]
+    return SplitData(
+        src_train_x=src_train_x,
+        src_val_x=src_val_x,
+        src_train_y=src_train_y,
+        src_val_y=src_val_y,
+        target_unsup_x=target_unsup_x,
+        target_val_x=target_val_x,
+        final_target_test_x=final_target_test_x,
+        debug_target_unsup_y=debug_target_unsup_y,
+        target_val_y=target_val_y,
+        final_target_test_y=final_target_test_y,
+        inter_x=inter_x,
+        inter_y=inter_y,
+    )
 
 
 # Gaussian dataset.
@@ -179,36 +218,7 @@ def high_d_gaussians(d, var, n):
     return lambda: make_moving_gaussians([s_a, s_b], [var, var], [t_a, t_b], [var, var], n)
 
 
-def get_split_data(dataset):
-    Xs, Ys = dataset.get_data()
-    n_src = dataset.n_src_train + dataset.n_src_valid
-    n_target = dataset.n_target_unsup + dataset.n_target_val + dataset.n_target_test
-    src_x, src_y = shuffle(Xs[:n_src], Ys[:n_src])
-    target_x, target_y = shuffle(
-        Xs[dataset.target_end-n_target:dataset.target_end],
-        Ys[dataset.target_end-n_target:dataset.target_end])
-    [src_train_x, src_val_x] = split_sizes(src_x, [dataset.n_src_train])
-    [src_train_y, src_val_y] = split_sizes(src_y, [dataset.n_src_train])
-    [target_unsup_x, target_val_x, final_target_test_x] = split_sizes(
-        target_x, [dataset.n_target_unsup, dataset.n_target_val])
-    [debug_target_unsup_y, target_val_y, final_target_test_y] = split_sizes(
-        target_y, [dataset.n_target_unsup, dataset.n_target_val])
-    inter_x, inter_y = Xs[n_src:dataset.target_end-n_target], Ys[n_src:dataset.target_end-n_target]
-    return SplitData(
-        src_train_x=src_train_x,
-        src_val_x=src_val_x,
-        src_train_y=src_train_y,
-        src_val_y=src_val_y,
-        target_unsup_x=target_unsup_x,
-        target_val_x=target_val_x,
-        final_target_test_x=final_target_test_x,
-        debug_target_unsup_y=debug_target_unsup_y,
-        target_val_y=target_val_y,
-        final_target_test_y=final_target_test_y,
-        inter_x=inter_x,
-        inter_y=inter_y,
-    )
-
+# MNIST datasets.
 
 def get_preprocessed_mnist():
     (train_x, train_y), (test_x, test_y) = mnist.load_data()
@@ -386,11 +396,11 @@ def make_mnist_svhn_dataset(num_examples, mnist_start_prob, mnist_end_prob):
 
 # Portraits dataset.
 
-def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
+def save_data(data_dir='dataset_32x32', save_file='dataset_32x32.mat', target_size=(32, 32)):
     Xs, Ys = [], []
     datagen = ImageDataGenerator(rescale=1./255)
     data_generator = datagen.flow_from_directory(
-        'dataset_32x32/', shuffle=False, **image_options)
+        data_dir, shuffle=False, target_size=target_size, **image_options)
     while True:
         next_x, next_y = data_generator.next()
         Xs.append(next_x)
@@ -400,10 +410,16 @@ def save_data(dir='dataset_32x32', save_file='dataset_32x32.mat'):
     Xs = np.concatenate(Xs)
     Ys = np.concatenate(Ys)
     filenames = [f[2:] for f in data_generator.filenames]
+    assert(len(set(filenames)) == len(filenames))
     filenames_idx = list(zip(filenames, range(len(filenames))))
     filenames_idx = [(f, i) for f, i in zip(filenames, range(len(filenames)))]
                      # if f[5:8] == 'Cal' or f[5:8] == 'cal']
     indices = [i for f, i in sorted(filenames_idx)]
+    genders = np.array([f[:1] for f in data_generator.filenames])[indices]
+    binary_genders = (genders == 'F')
+    pickle.dump(binary_genders, open('portraits_gender_stats', "wb"))
+    print("computed gender stats")
+    # gender_stats = utils.rolling_average(binary_genders, 500)
     # print(filenames)
     # sort_indices = np.argsort(filenames)
     # We need to sort only by year, and not have correlation with state.
@@ -420,8 +436,9 @@ def load_portraits_data(load_file='dataset_32x32.mat'):
     return data['Xs'], data['Ys'][0]
 
 
-def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst):
-    xs, ys = load_portraits_data()
+def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
+                        load_file='dataset_32x32.mat'):
+    xs, ys = load_portraits_data(load_file)
     src_end = n_src_tr + n_src_val
     inter_end = src_end + n_inter
     trg_end = inter_end + n_trg_val + n_trg_tst
@@ -455,8 +472,15 @@ def portraits_data_func():
     return make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000)
 
 
+def portraits_64_data_func():
+    return make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000, load_file='dataset_64x64.mat')
+
+
 def gaussian_data_func(d):
     return make_high_d_gaussian_data(
         d=d, min_var=0.05, max_var=0.1,
         source_alphas=[0.0, 0.0], inter_alphas=[0.0, 1.0], target_alphas=[1.0, 1.0],
         n_src_tr=500, n_src_val=1000, n_inter=5000, n_trg_val=1000, n_trg_tst=1000)
+
+
+

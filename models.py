@@ -56,6 +56,24 @@ def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
     ])
 
 
+def deeper_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0):
+    return keras.models.Sequential([
+    keras.layers.Conv2D(hidden_nodes, (5,5), (1, 1), activation=tf.nn.relu,
+                           padding='same', input_shape=input_shape),
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same', input_shape=input_shape),
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same'),
+    keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
+                           padding='same'),
+    keras.layers.Dropout(0.5),
+    keras.layers.BatchNormalization(),
+    keras.layers.Flatten(name='after_flatten'),
+    # keras.layers.Dense(64, activation=tf.nn.relu),
+    keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out')
+    ])
+
+
 def unregularized_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0):
     return keras.models.Sequential([
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
@@ -81,6 +99,19 @@ def keras_mnist_model(num_labels, input_shape=(28,28,1)):
     model.add(keras.layers.Flatten())
     model.add(keras.layers.Dense(128, activation='relu'))
     model.add(keras.layers.Dropout(0.5))
+    model.add(keras.layers.Dense(num_labels, activation='softmax'))
+    return model
+
+
+def unregularized_keras_mnist_model(num_labels, input_shape=(28,28,1)):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Conv2D(32, kernel_size=(3, 3),
+                     activation='relu',
+                     input_shape=input_shape))
+    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(keras.layers.Flatten())
+    model.add(keras.layers.Dense(128, activation='relu'))
     model.add(keras.layers.Dense(num_labels, activation='softmax'))
     return model
 
@@ -123,6 +154,10 @@ def get_loss(loss_name, num_classes):
         loss = sparse_categorical_hinge(num_classes)
     elif loss_name == 'ramp':
         loss = sparse_categorical_ramp(num_classes)
-    else:
+    elif loss_name == 'ce':
         loss = losses.sparse_categorical_crossentropy
+    elif loss_name == 'categorical_ce':
+        loss = losses.categorical_crossentropy
+    else:
+        raise ValueError("Cannot parse loss %s", loss_name)
     return loss

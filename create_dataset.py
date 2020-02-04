@@ -3,6 +3,7 @@ from PIL import Image
 import os, sys
 from shutil import copyfile
 import numpy as np
+import datasets
 
 # Make source and target datasets.
 # num_train = 5000
@@ -38,20 +39,22 @@ import numpy as np
 # for file in old_m_photos:
 #     copyfile('./M/' + file, './new_images/M/' + file)
 
-# Resize images.
-def resize(path, size=64):
-    dirs = os.listdir(path)
-    for item in dirs:
-        if os.path.isfile(path+item):
-            im = Image.open(path+item)
-            f, e = os.path.splitext(path+item)
-            imResize = im.resize((size,size), Image.ANTIALIAS)
-            imResize.save(f + '.png', 'PNG')
+# # Resize images.
+# def resize(path, size=64):
+#     dirs = os.listdir(path)
+#     for item in dirs:
+#         if os.path.isfile(path+item):
+#             im = Image.open(path+item)
+#             f, e = os.path.splitext(path+item)
+#             imResize = im.resize((size,size), Image.ANTIALIAS)
+#             imResize.save(f + '.png', 'PNG')
 
-# for i in ['./old_images/', './new_images/']:
-#     for j in ['train/', 'test/']:
-#         for k in ['F/', 'M/']:
-#             resize(i + j + k)
+# # for i in ['./old_images/', './new_images/']:
+# #     for j in ['train/', 'test/']:
+# #         for k in ['F/', 'M/']:
+# #             resize(i + j + k)
 
-for folder in ['./dataset_64x64/M/', './dataset_64x64/F/']:
-    resize(folder, size=64)
+# for folder in ['./dataset_64x64/M/', './dataset_64x64/F/']:
+#     resize(folder, size=64)
+
+datasets.save_data(data_dir='dataset_64x64', save_file='dataset_64x64.mat', target_size=(64,64))
