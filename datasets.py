@@ -472,6 +472,10 @@ def portraits_data_func():
     return make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000)
 
 
+def portraits_data_func_more():
+    return make_portraits_data(1000, 1000, 20000, 2000, 1000, 1000)
+
+
 def portraits_64_data_func():
     return make_portraits_data(1000, 1000, 14000, 2000, 1000, 1000, load_file='dataset_64x64.mat')
 

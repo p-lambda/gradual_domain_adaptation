@@ -238,15 +238,27 @@ def dialing_rotated_mnist_60_conv_experiment():
 if __name__ == "__main__":
     # rotated_mnist_regularization_experiment(
     #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
+    #     save_name_base='saved_files/inf_reg_mnist', N=2000, delta_angle=3, num_angles=20,
+    #     retrain=False, num_runs=5)
+    # regularization_results('saved_files/inf_reg_mnist_2000_3_20.dat')
+
+    # rotated_mnist_regularization_experiment(
+    #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
     #     save_name_base='saved_files/inf_reg_mnist', N=5000, delta_angle=3, num_angles=20,
     #     retrain=False, num_runs=5)
     # regularization_results('saved_files/inf_reg_mnist_5000_3_20.dat')
+
+    # rotated_mnist_regularization_experiment(
+    #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
+    #     save_name_base='saved_files/inf_reg_mnist', N=20000, delta_angle=3, num_angles=20,
+    #     retrain=False, num_runs=5)
+    # regularization_results('saved_files/inf_reg_mnist_20000_3_20.dat')
 
     # # Run all experiments comparing regularization vs no regularization.
     # portraits_conv_experiment()
     # regularization_results('saved_files/reg_vs_unreg_portraits.dat')
     # rotated_mnist_60_conv_experiment()
-    # regularization_results('saved_files/reg_vs_unreg_rot_mnist_60_conv.dat')
+    regularization_results('saved_files/reg_vs_unreg_rot_mnist_60_conv.dat')
     # gaussian_linear_experiment()
     # regularization_results('saved_files/reg_vs_unreg_gaussian.dat')
 
@@ -259,8 +271,8 @@ if __name__ == "__main__":
     # regularization_results('saved_files/reg_vs_unreg_soft_gaussian.dat')
 
     # Dialing ratios results.
-    dialing_rotated_mnist_60_conv_experiment()
-    regularization_results('saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat')
+    # dialing_rotated_mnist_60_conv_experiment()
+    # regularization_results('saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat')
 
     # # Soft labeling with simple model, don't retrain.
     # soft_rotated_mnist_60_conv_experiment()
