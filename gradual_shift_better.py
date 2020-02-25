@@ -245,40 +245,40 @@ def gaussian_linear_experiment_more_epochs():
 
 
 if __name__ == "__main__":
-    # # Main paper experiments.
-    # portraits_conv_experiment()
-    # experiment_results('saved_files/portraits.dat')
-    # rotated_mnist_60_conv_experiment()
-    # experiment_results('saved_files/rot_mnist_60_conv.dat')
-    # gaussian_linear_experiment()
-    # experiment_results('saved_files/gaussian.dat')
-    # dialing_ratios_mnist_experiment()
-    # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
+    # Main paper experiments.
+    portraits_conv_experiment()
+    experiment_results('saved_files/portraits.dat')
+    rotated_mnist_60_conv_experiment()
+    experiment_results('saved_files/rot_mnist_60_conv.dat')
+    gaussian_linear_experiment()
+    experiment_results('saved_files/gaussian.dat')
+    dialing_ratios_mnist_experiment()
+    experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
 
-    # # Without confidence thresholding.
-    # portraits_conv_experiment_noconf()
-    # experiment_results('saved_files/portraits_noconf.dat')
-    # rotated_mnist_60_conv_experiment_noconf()
-    # experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
-    # gaussian_linear_experiment_noconf()
-    # experiment_results('saved_files/gaussian_noconf.dat')
+    # Without confidence thresholding.
+    portraits_conv_experiment_noconf()
+    experiment_results('saved_files/portraits_noconf.dat')
+    rotated_mnist_60_conv_experiment_noconf()
+    experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
+    gaussian_linear_experiment_noconf()
+    experiment_results('saved_files/gaussian_noconf.dat')
 
-    # # Try predicting for next set of data points on portraits.
-    # portraits_conv_experiment_more()
+    # Try predicting for next set of data points on portraits.
+    portraits_conv_experiment_more()
     experiment_results('saved_files/portraits_more.dat')
 
-    # # Try smaller window sizes.
-    # portraits_conv_experiment_smaller_interval()
-    # experiment_results('saved_files/portraits_smaller_interval.dat')
-    # rotated_mnist_60_conv_experiment_smaller_interval()
-    # experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat')
-    # gaussian_linear_experiment_smaller_interval()
-    # experiment_results('saved_files/gaussian_smaller_interval.dat')
+    # Try smaller window sizes.
+    portraits_conv_experiment_smaller_interval()
+    experiment_results('saved_files/portraits_smaller_interval.dat')
+    rotated_mnist_60_conv_experiment_smaller_interval()
+    experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat')
+    gaussian_linear_experiment_smaller_interval()
+    experiment_results('saved_files/gaussian_smaller_interval.dat')
 
     # Try training more epochs.
-    # portraits_conv_experiment_more_epochs()
-    # experiment_results('saved_files/portraits_more_epochs.dat')
-    # rotated_mnist_60_conv_experiment_more_epochs()
-    # experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat')
-    # gaussian_linear_experiment_more_epochs()
-    # experiment_results('saved_files/gaussian_more_epochs.dat')
+    portraits_conv_experiment_more_epochs()
+    experiment_results('saved_files/portraits_more_epochs.dat')
+    rotated_mnist_60_conv_experiment_more_epochs()
+    experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat')
+    gaussian_linear_experiment_more_epochs()
+    experiment_results('saved_files/gaussian_more_epochs.dat')
