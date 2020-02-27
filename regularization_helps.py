@@ -240,50 +240,60 @@ if __name__ == "__main__":
         models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
         save_name_base='saved_files/inf_reg_mnist', N=2000, delta_angle=3, num_angles=20,
         retrain=False, num_runs=5)
+    print("Rot MNIST experiment 2000 points rotated")
     regularization_results('saved_files/inf_reg_mnist_2000_3_20.dat')
 
     rotated_mnist_regularization_experiment(
         models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
         save_name_base='saved_files/inf_reg_mnist', N=5000, delta_angle=3, num_angles=20,
         retrain=False, num_runs=5)
+    print("Rot MNIST experiment 5000 points rotated")
     regularization_results('saved_files/inf_reg_mnist_5000_3_20.dat')
 
     rotated_mnist_regularization_experiment(
         models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
         save_name_base='saved_files/inf_reg_mnist', N=20000, delta_angle=3, num_angles=20,
         retrain=False, num_runs=5)
+    print("Rot MNIST experiment 20k points rotated")
     regularization_results('saved_files/inf_reg_mnist_20000_3_20.dat')
 
     # Run all experiments comparing regularization vs no regularization.
     portraits_conv_experiment()
+    print("Portraits conv experiment reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_portraits.dat')
     rotated_mnist_60_conv_experiment()
+    print("Rotating MNIST conv experiment reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_rot_mnist_60_conv.dat')
     gaussian_linear_experiment()
+    print("Gaussian linear experiment reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_gaussian.dat')
 
     # Run all experiments, soft labeling, comparing regularization vs no regularization.
     soft_portraits_conv_experiment()
+    print("Portraits conv experiment soft labeling reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_soft_portraits.dat')
     soft_rotated_mnist_60_conv_experiment()
+    print("Rot MNIST conv experiment soft labeling reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat')
     soft_gaussian_linear_experiment()
+    print("Gaussian linear experiment soft labeling reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_soft_gaussian.dat')
 
     # Dialing ratios results.
     dialing_rotated_mnist_60_conv_experiment()
+    print("Dialing rations MNIST experiment reg vs no reg")
     regularization_results('saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat')
 
-    # Soft labeling with simple model, don't retrain.
-    soft_rotated_mnist_60_conv_experiment()
-    regularization_results('saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat')
     # Try retraining the model each iteration.
     retrain_soft_rotated_mnist_60_conv_experiment()
+    print("Rot MNIST conv experiment reset model when self-training")
     regularization_results('saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.dat')
     # Use the Keras MNIST model.
     keras_retrain_soft_rotated_mnist_60_conv_experiment()
+    print("Rot MNIST conv experiment use Keras MNIST model")
     regularization_results('saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.dat')
     # Use a deeper (4 layer) conv net model.
     deeper_retrain_soft_rotated_mnist_60_conv_experiment()
+    print("Rot MNIST conv experiment use deeper model")
     regularization_results('saved_files/deeper_retrain_soft_rot_mnist_60_conv.dat')
 
