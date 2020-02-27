@@ -122,9 +122,9 @@ def regularization_results(save_name):
         unreg_accs.append(100 * unreg_accuracies[-1])
     num_runs = len(src_accs)
     mult = 1.645  # For 90% confidence intervals
-    print("Source accuracy (%): ", np.mean(src_accs),
+    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
           mult * np.std(src_accs) / np.sqrt(num_runs))
-    print("Target accuracy (%): ", np.mean(target_accs),
+    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
           mult * np.std(target_accs) / np.sqrt(num_runs))
     print("Reg accuracy (%): ", np.mean(reg_accs),
           mult * np.std(reg_accs) / np.sqrt(num_runs))

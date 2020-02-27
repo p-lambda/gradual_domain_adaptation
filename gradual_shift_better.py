@@ -100,19 +100,19 @@ def experiment_results(save_name):
         best_alls.append(100 * np.max(all_accuracies))
     num_runs = len(src_accs)
     mult = 1.645  # For 90% confidence intervals
-    print("Source accuracy (%): ", np.mean(src_accs),
+    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
           mult * np.std(src_accs) / np.sqrt(num_runs))
-    print("Target accuracy (%): ", np.mean(target_accs),
+    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
           mult * np.std(target_accs) / np.sqrt(num_runs))
-    print("Gradual accuracy (%): ", np.mean(final_graduals),
+    print("Gradual self-train accuracy (%): ", np.mean(final_graduals),
           mult * np.std(final_graduals) / np.sqrt(num_runs))
-    print("Target accuracy (%): ", np.mean(final_targets),
+    print("Target self-train accuracy (%): ", np.mean(final_targets),
           mult * np.std(final_targets) / np.sqrt(num_runs))
-    print("All accuracy (%): ", np.mean(final_alls),
+    print("All self-train accuracy (%): ", np.mean(final_alls),
           mult * np.std(final_alls) / np.sqrt(num_runs))
-    print("Best of Target accuracy (%): ", np.mean(best_targets),
+    print("Best of Target self-train accuracies (%): ", np.mean(best_targets),
           mult * np.std(best_targets) / np.sqrt(num_runs))
-    print("Best of All accuracy (%): ", np.mean(best_alls),
+    print("Best of All self-train accuracies (%): ", np.mean(best_alls),
           mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
