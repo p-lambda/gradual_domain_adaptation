@@ -85,6 +85,67 @@ def run_experiment(
     pickle.dump(results, open(save_file, "wb"))
 
 
+def learn_gradual_structure_experiment(
+    dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
+    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None):
+    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
+        trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    if soft:
+        src_tr_y = to_categorical(src_tr_y)
+        src_val_y = to_categorical(src_val_y)
+        trg_eval_y = to_categorical(trg_eval_y)
+        dir_inter_y = to_categorical(dir_inter_y)
+        inter_y = to_categorical(inter_y)
+        trg_test_y = to_categorical(trg_test_y)
+    if num_repeats is None:
+        num_repeats = int(inter_x.shape[0] / interval)
+    def new_model():
+        model = model_func(n_classes, input_shape=input_shape)
+        compile_model(model, loss)
+        return model
+    def student_func(teacher):
+        return teacher
+    def run(seed):
+        utils.rand_seed(seed)
+        trg_eval_x = trg_val_x
+        trg_eval_y = trg_val_y
+        # Train source model.
+        source_model = new_model()
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
+        _, src_acc = source_model.evaluate(src_val_x, src_val_y)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        # Learn gradual structure
+        print("\n\n Learn gradual structure")
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        learn_accuracies, student = utils.self_train_learn_gradual(
+            student_func, teacher, inter_x, inter_y, num_new_pts=interval, epochs=epochs, soft=soft)
+        _, acc = student.evaluate(trg_eval_x, trg_eval_y)
+        learn_accuracies.append(acc)
+        # # Gradual self-training.
+        # print("\n\n Gradual self-training:")
+        # teacher = new_model()
+        # teacher.set_weights(source_model.get_weights())
+        # gradual_accuracies, student = utils.gradual_self_train(
+        #     student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
+        #     confidence_q=conf_q)
+        # _, acc = student.evaluate(trg_eval_x, trg_eval_y)
+        # gradual_accuracies.append(acc)
+        
+        # print("\n\n Direct boostrap to all unsup data:")
+        # teacher = new_model()
+        # teacher.set_weights(source_model.get_weights())
+        # all_accuracies, _ = utils.self_train(
+        #     student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
+        #     target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
+        # return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
+    results = []
+    for i in range(num_runs):
+        results.append(run(i))
+    print('Saving to ' + save_file)
+    pickle.dump(results, open(save_file, "wb"))
+
+
 def experiment_results(save_name):
     results = pickle.load(open(save_name, "rb"))
     src_accs, target_accs = [], []
@@ -114,6 +175,14 @@ def experiment_results(save_name):
           mult * np.std(best_targets) / np.sqrt(num_runs))
     print("Best of All self-train accuracies (%): ", np.mean(best_alls),
           mult * np.std(best_alls) / np.sqrt(num_runs))
+
+
+def rotated_mnist_60_conv_learn_structure_experiment():
+    learn_gradual_structure_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/rot_mnist_60_conv_learn_structure.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -245,6 +314,9 @@ def gaussian_linear_experiment_more_epochs():
 
 
 if __name__ == "__main__":
+    # Learn gradual structure.
+    rotated_mnist_60_conv_learn_structure_experiment()
+
     # Main paper experiments.
     portraits_conv_experiment()
     print("Portraits conv experiment")

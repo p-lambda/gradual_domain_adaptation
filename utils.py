@@ -42,6 +42,7 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
 
 def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confidence_q=0.1,
                        epochs=20, soft=False):
+    assert(not soft)
     upper_idx = int(unsup_x.shape[0] / interval)
     accuracies = []
     for i in range(upper_idx):
@@ -54,6 +55,33 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
             soft_self_train_once(student, teacher, cur_xs, epochs)
         else:
             self_train_once(student, teacher, cur_xs, confidence_q, epochs)
+        _, accuracy = student.evaluate(cur_xs, cur_ys)
+        accuracies.append(accuracy)
+        teacher = student
+    return accuracies, student
+
+
+def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pts, epochs=20,
+                             soft=False):
+    num_unsup = unsup_x.shape[0]
+    iters = int(num_unsup / num_new_pts)
+    if iters * num_new_pts < num_unsup:
+        iters += 1
+    assert(iters * num_new_pts >= num_unsup)
+    assert((iters-1) * num_new_pts < num_unsup)
+    accuracies = []
+    for i in range(iters):
+        student = student_func(teacher)
+        num_points_to_add = min((i+1) * num_new_pts, num_unsup)
+        logits = teacher.predict(np.concatenate([unsup_x]))
+        # TODO: change this to be top minus second top.
+        confidence = np.amax(logits, axis=1) - np.amin(logits, axis=1)
+        indices = np.argsort(confidence)[-num_points_to_add:]
+        print(indices[:10])
+        preds = np.argmax(logits, axis=1)
+        cur_xs = unsup_x[indices]
+        cur_ys = debug_y[indices]
+        student.fit(cur_xs, preds[indices], epochs=epochs, verbose=False)
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
         teacher = student
