@@ -139,9 +139,12 @@ def learn_gradual_structure_experiment(
         #     student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
         #     target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         # return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
+        return learn_accuracies
     results = []
     for i in range(num_runs):
         results.append(run(i))
+        print(results[-1])
+    pring(results)
     print('Saving to ' + save_file)
     pickle.dump(results, open(save_file, "wb"))
 
