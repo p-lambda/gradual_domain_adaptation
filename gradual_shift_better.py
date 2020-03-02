@@ -144,7 +144,7 @@ def learn_gradual_structure_experiment(
     for i in range(num_runs):
         results.append(run(i))
         print(results[-1])
-    pring(results)
+    print(results)
     print('Saving to ' + save_file)
     pickle.dump(results, open(save_file, "wb"))
 
