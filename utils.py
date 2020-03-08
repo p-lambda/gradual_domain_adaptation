@@ -2,6 +2,7 @@
 import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 def rand_seed(seed):
     np.random.seed(seed)
@@ -57,6 +58,11 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
             self_train_once(student, teacher, cur_xs, confidence_q, epochs)
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
+        teacher_logits = teacher.predict(cur_xs)
+        teacher_preds = np.argmax(teacher_logits, axis=1)
+        student_logits = student.predict(cur_xs)
+        student_preds = np.argmax(student_logits, axis=1)
+        print('student-teacher agreement: ', np.mean(teacher_preds==student_preds))
         teacher = student
     return accuracies, student
 
@@ -75,12 +81,20 @@ def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pt
         num_points_to_add = min((i+1) * num_new_pts, num_unsup)
         logits = teacher.predict(np.concatenate([unsup_x]))
         # TODO: change this to be top minus second top.
-        confidence = np.amax(logits, axis=1) - np.amin(logits, axis=1)
-        indices = np.argsort(confidence)[-num_points_to_add:]
-        print(indices[:10])
+        confidence = np.amax(logits, axis=1)
+        indices = np.argsort(confidence)
+        # Plot average index as a function of confidence. Ideally this should be increasing.
+        # averages = rolling_average(indices, num_new_pts)
+        # plt.plot(list(range(len(averages))), averages)
+        # plt.show()
+        # Show histogram of angles for the top 2000 points.
+        plot_histogram(indices[-num_points_to_add:] / 40000.0)
+        indices = indices[-num_points_to_add:]
         preds = np.argmax(logits, axis=1)
         cur_xs = unsup_x[indices]
         cur_ys = debug_y[indices]
+        pred_acc = np.mean(preds[indices] == cur_ys)
+        print('accuracy: ', pred_acc)
         student.fit(cur_xs, preds[indices], epochs=epochs, verbose=False)
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
@@ -127,4 +141,10 @@ def rolling_average(sequence, r):
         cur_sum = cur_sum + sequence[i] - sequence[i-r]
         rolling_sums.append(cur_sum)
     return np.array(rolling_sums) * 1.0 / r
+
+
+def plot_histogram(xs):
+    bins = np.linspace(np.min(xs), np.max(xs), 40)
+    plt.hist(xs, bins, alpha=0.5, label='hist')
+    plt.show()
 

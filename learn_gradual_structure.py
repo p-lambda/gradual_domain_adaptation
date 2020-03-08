@@ -45,7 +45,7 @@ def oracle_performance(dataset_func, n_classes, input_shape, save_file, model_fu
 
 
 def nearest_neighbor_selective_classification(dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    epochs=10, loss='ce', layer=-2, k=5):
+    epochs=10, loss='ce', layer=-2, k=1, num_points_to_add=2000):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     def new_model():
@@ -60,9 +60,33 @@ def nearest_neighbor_selective_classification(dataset_func, n_classes, input_sha
         source_model = new_model()
         source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=True)
         features = source_model.layers[layer].output
-        print(features.shape)
         rep_model = Model(inputs=source_model.inputs, outputs=features)
-        source_reps = rep_model.predict
+        source_reps = rep_model.predict(src_tr_x)
+        nn = KNeighborsClassifier(n_neighbors=k)
+        nn.fit(source_reps, src_tr_y)
+        # Validation accuracy.
+        val_reps = rep_model.predict(src_val_x)
+        val_acc = np.mean(nn.predict(val_reps) == src_val_y)
+        print('Source val acc: ', val_acc)
+        # Target accuracy.
+        trg_reps = rep_model.predict(trg_eval_x)
+        trg_acc = np.mean(nn.predict(trg_reps) == trg_eval_y)
+        print('Target acc: ', trg_acc)
+        # For each intermediate point, get k nearest neighbor distance, average them.
+        inter_reps = rep_model.predict(inter_x)
+        neigh_dist, _ = nn.kneighbors(X=inter_reps, n_neighbors=k, return_distance=True)
+        ave_dist = np.mean(neigh_dist, axis=1)
+        print(ave_dist.shape)
+        indices = np.argsort(ave_dist)
+        keep_points = indices[:num_points_to_add]
+        utils.plot_histogram(keep_points / 42000.0)
+        # Get accuracy on the selected points.
+        print("Accuracy on easy examples")
+        easy_x = inter_x[keep_points]
+        easy_y = inter_y[keep_points]
+        easy_reps = rep_model.predict(easy_x)
+        easy_acc = np.mean(nn.predict(easy_reps) == easy_y)
+        print('Easy acc: ', easy_acc)
     run(0)
 
     # Train a model on source
@@ -84,7 +108,7 @@ def rotated_mnist_60_conv_nn_experiment():
     nearest_neighbor_selective_classification(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file='saved_files/rot_mnist_60_conv_oracle_all.dat',
-        model_func=models.simple_softmax_conv_model, epochs=2, loss='ce', layer=-2, k=1)
+        model_func=models.simple_softmax_conv_model, epochs=10, loss='ce', layer=-2, k=1)
 
 
 if __name__ == "__main__":
