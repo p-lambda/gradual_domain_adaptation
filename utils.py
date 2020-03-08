@@ -48,8 +48,8 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
     accuracies = []
     for i in range(upper_idx):
         student = student_func(teacher)
-        cur_xs = unsup_x[interval*i:interval*(i+1)]
-        cur_ys = debug_y[interval*i:interval*(i+1)]
+        cur_xs = unsup_x[:interval*(i+1)]
+        cur_ys = debug_y[:interval*(i+1)]
         # _, student = self_train(
         #     student_func, teacher, unsup_x, confidence_q, epochs, repeats=2)
         if soft:

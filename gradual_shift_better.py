@@ -317,17 +317,17 @@ def gaussian_linear_experiment_more_epochs():
 
 
 if __name__ == "__main__":
-    # Learn gradual structure.
-    rotated_mnist_60_conv_learn_structure_experiment()
-    experiment_results('saved_files/rot_mnist_60_conv_learn_structure.dat')
+    # # Learn gradual structure.
+    # rotated_mnist_60_conv_learn_structure_experiment()
+    # experiment_results('saved_files/rot_mnist_60_conv_learn_structure.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
     # print("Portraits conv experiment")
     # experiment_results('saved_files/portraits.dat')
-    # rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment")
-    # experiment_results('saved_files/rot_mnist_60_conv.dat')
+    rotated_mnist_60_conv_experiment()
+    print("Rot MNIST conv experiment")
+    experiment_results('saved_files/rot_mnist_60_conv.dat')
     # gaussian_linear_experiment()
     # print("Gaussian linear experiment")
     # experiment_results('saved_files/gaussian.dat')
