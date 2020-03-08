@@ -63,6 +63,7 @@ def run_experiment(
             student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
             confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
+        print("final gradual acc: ", acc)
         gradual_accuracies.append(acc)
         # Train to target.
         print("\n\n Direct boostrap to target:")
