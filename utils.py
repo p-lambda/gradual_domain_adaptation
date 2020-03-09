@@ -46,10 +46,11 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
     assert(not soft)
     upper_idx = int(unsup_x.shape[0] / interval)
     accuracies = []
+    unsup_pseudolabels = []
     for i in range(upper_idx):
         student = student_func(teacher)
-        cur_xs = unsup_x[:interval*(i+1)]
-        cur_ys = debug_y[:interval*(i+1)]
+        cur_xs = unsup_x[interval*i:interval*(i+1)]
+        cur_ys = debug_y[interval*i:interval*(i+1)]
         # _, student = self_train(
         #     student_func, teacher, unsup_x, confidence_q, epochs, repeats=2)
         if soft:
@@ -63,8 +64,10 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
         student_logits = student.predict(cur_xs)
         student_preds = np.argmax(student_logits, axis=1)
         print('student-teacher agreement: ', np.mean(teacher_preds==student_preds))
+        unsup_pseudolabels.append(student_preds)
         teacher = student
-    return accuracies, student
+    unsup_pseudolabels = np.concatenate(unsup_pseudolabels)
+    return accuracies, student, unsup_pseudolabels
 
 
 def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pts, epochs=20,

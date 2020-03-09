@@ -59,11 +59,17 @@ def run_experiment(
         print("\n\n Gradual self-training:")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
-        gradual_accuracies, student = utils.gradual_self_train(
+        gradual_accuracies, student, unsup_pseudolabels = utils.gradual_self_train(
             student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
             confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         print("final gradual acc: ", acc)
+        pooled_student = new_model()
+        pooled_student.set_weights(source_model.get_weights())
+        pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
+        _, acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
+        print("pooled acc: ", acc)
+        assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
         gradual_accuracies.append(acc)
         # Train to target.
         print("\n\n Direct boostrap to target:")
