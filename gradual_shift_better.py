@@ -191,7 +191,7 @@ def rotated_mnist_60_conv_learn_structure_experiment():
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file='saved_files/rot_mnist_60_conv_learn_structure.dat',
-        model_func=models.simple_softmax_conv_model, interval=5000, epochs=10, loss='ce',
+        model_func=models.simple_softmax_conv_model, interval=6000, epochs=10, loss='ce',
         soft=False, conf_q=0.1, num_runs=5)
 
 
@@ -324,17 +324,17 @@ def gaussian_linear_experiment_more_epochs():
 
 
 if __name__ == "__main__":
-    # # Learn gradual structure.
-    # rotated_mnist_60_conv_learn_structure_experiment()
-    # experiment_results('saved_files/rot_mnist_60_conv_learn_structure.dat')
+    # Learn gradual structure.
+    rotated_mnist_60_conv_learn_structure_experiment()
+    experiment_results('saved_files/rot_mnist_60_conv_learn_structure.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
     # print("Portraits conv experiment")
     # experiment_results('saved_files/portraits.dat')
-    rotated_mnist_60_conv_experiment()
-    print("Rot MNIST conv experiment")
-    experiment_results('saved_files/rot_mnist_60_conv.dat')
+    # rotated_mnist_60_conv_experiment()
+    # print("Rot MNIST conv experiment")
+    # experiment_results('saved_files/rot_mnist_60_conv.dat')
     # gaussian_linear_experiment()
     # print("Gaussian linear experiment")
     # experiment_results('saved_files/gaussian.dat')
