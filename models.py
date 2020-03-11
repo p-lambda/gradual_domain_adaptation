@@ -40,19 +40,23 @@ def mlp_softmax_model(num_labels, input_shape, l2_reg=0.02):
     return linear_model
 
 
-def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0):
+def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0, dropout=0.5):
     return keras.models.Sequential([
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
-                           padding='same', input_shape=input_shape),
+                           padding='same', input_shape=input_shape,
+                           kernel_regularizer=regularizers.l2(l2_reg)),
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
-                           padding='same'),
+                           padding='same',
+                           kernel_regularizer=regularizers.l2(l2_reg)),
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
-                           padding='same'),
-    keras.layers.Dropout(0.5),
+                           padding='same',
+                           kernel_regularizer=regularizers.l2(l2_reg)),
+    keras.layers.Dropout(dropout),
     keras.layers.BatchNormalization(),
     keras.layers.Flatten(name='after_flatten'),
     # keras.layers.Dense(64, activation=tf.nn.relu),
-    keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out')
+    keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out',
+        kernel_regularizer=regularizers.l2(l2_reg))
     ])
 
 

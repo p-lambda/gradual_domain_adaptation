@@ -49,6 +49,7 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
     unsup_pseudolabels = []
     for i in range(upper_idx):
         student = student_func(teacher)
+        # Have an option to accumulate instead of just going to the next interval.
         cur_xs = unsup_x[interval*i:interval*(i+1)]
         cur_ys = debug_y[interval*i:interval*(i+1)]
         # _, student = self_train(
@@ -66,12 +67,15 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
         print('student-teacher agreement: ', np.mean(teacher_preds==student_preds))
         unsup_pseudolabels.append(student_preds)
         teacher = student
+    # Print average, min, max student teacher agreement
+    # Plot average accuracy on entire unsup set and current set.
+    # Current set is just the most recent set of points.
     unsup_pseudolabels = np.concatenate(unsup_pseudolabels)
     return accuracies, student, unsup_pseudolabels
 
 
-def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pts, epochs=20,
-                             soft=False):
+def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pts, save_folder, seed,
+                             epochs=20, soft=False):
     num_unsup = unsup_x.shape[0]
     iters = int(num_unsup / num_new_pts)
     if iters * num_new_pts < num_unsup:
@@ -83,15 +87,18 @@ def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pt
         student = student_func(teacher)
         num_points_to_add = min((i+1) * num_new_pts, num_unsup)
         logits = teacher.predict(np.concatenate([unsup_x]))
-        # TODO: change this to be top minus second top.
+        # TODO: maybe change this to be top minus second top.
         confidence = np.amax(logits, axis=1)
         indices = np.argsort(confidence)
+        # Plot scatter plot
+        # Plot average angle as function of confidence
+        # Plot histogram of angles for points to add
         # Plot average index as a function of confidence. Ideally this should be increasing.
         # averages = rolling_average(indices, num_new_pts)
         # plt.plot(list(range(len(averages))), averages)
         # plt.show()
-        # Show histogram of angles for the top 2000 points.
-        plot_histogram(indices[-num_points_to_add:] / 40000.0)
+        # Show histogram of angles for the points to add.
+        # plot_histogram(indices[-num_points_to_add:] / 40000.0)
         indices = indices[-num_points_to_add:]
         preds = np.argmax(logits, axis=1)
         cur_xs = unsup_x[indices]
@@ -102,6 +109,8 @@ def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pt
         _, accuracy = student.evaluate(cur_xs, cur_ys)
         accuracies.append(accuracy)
         teacher = student
+    # Print average, min, max student teacher agreement
+    # Plot accuracy on entire unsup data and on current set.
     return accuracies, student
 
 

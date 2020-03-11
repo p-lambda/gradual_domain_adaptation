@@ -45,7 +45,7 @@ def oracle_performance(dataset_func, n_classes, input_shape, save_file, model_fu
 
 
 def nearest_neighbor_selective_classification(dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    epochs=10, loss='ce', layer=-2, k=1, num_points_to_add=2000):
+    epochs=10, loss='ce', layer=-2, k=1, num_points_to_add=5000):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     def new_model():

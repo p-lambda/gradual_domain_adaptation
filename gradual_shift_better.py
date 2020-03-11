@@ -93,8 +93,12 @@ def run_experiment(
 
 
 def learn_gradual_structure_experiment(
-    dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
+    dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None):
+    if not os.path.exists(save_folder):
+        os.mkdir(save_folder)
+    else:
+        print("Warning: folder already exists, overwriting.")
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     if soft:
@@ -126,34 +130,20 @@ def learn_gradual_structure_experiment(
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         learn_accuracies, student = utils.self_train_learn_gradual(
-            student_func, teacher, inter_x, inter_y, num_new_pts=interval, epochs=epochs, soft=soft)
+            student_func, teacher, inter_x, inter_y, num_new_pts=interval, epochs=epochs, soft=soft,
+            save_folder=save_folder, seed=seed)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         learn_accuracies.append(acc)
-        # # Gradual self-training.
-        # print("\n\n Gradual self-training:")
-        # teacher = new_model()
-        # teacher.set_weights(source_model.get_weights())
-        # gradual_accuracies, student = utils.gradual_self_train(
-        #     student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
-        #     confidence_q=conf_q)
-        # _, acc = student.evaluate(trg_eval_x, trg_eval_y)
-        # gradual_accuracies.append(acc)
-        
-        # print("\n\n Direct boostrap to all unsup data:")
-        # teacher = new_model()
-        # teacher.set_weights(source_model.get_weights())
-        # all_accuracies, _ = utils.self_train(
-        #     student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-        #     target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
-        # return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
         return learn_accuracies
     results = []
     for i in range(num_runs):
         results.append(run(i))
         print(results[-1])
     print(results)
+    save_file=save_folder + '/results.dat'
     print('Saving to ' + save_file)
     pickle.dump(results, open(save_file, "wb"))
+    return save_file
 
 
 def experiment_results(save_name):
@@ -187,12 +177,15 @@ def experiment_results(save_name):
           mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
-def rotated_mnist_60_conv_learn_structure_experiment():
+def rotated_mnist_60_conv_learn_structure_experiment(l2_reg, interval):
+    def model(n_classes, input_shape):
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, l2_reg=l2_reg)
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
-        save_file='saved_files/rot_mnist_60_conv_learn_structure.dat',
-        model_func=models.simple_softmax_conv_model, interval=6000, epochs=10, loss='ce',
-        soft=False, conf_q=0.1, num_runs=5)
+        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(l2_reg) + '_' +
+                   str(interval)),
+        model_func=model, interval=interval, epochs=10, loss='ce', soft=False, conf_q=0.0,
+        num_runs=5)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -325,8 +318,12 @@ def gaussian_linear_experiment_more_epochs():
 
 if __name__ == "__main__":
     # Learn gradual structure.
-    rotated_mnist_60_conv_learn_structure_experiment()
-    experiment_results('saved_files/rot_mnist_60_conv_learn_structure.dat')
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.0, interval=6000)
+    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=6000)
+    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.5, interval=6000)
+    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
