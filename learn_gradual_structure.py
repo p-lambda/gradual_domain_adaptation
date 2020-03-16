@@ -44,8 +44,9 @@ def oracle_performance(dataset_func, n_classes, input_shape, save_file, model_fu
     return run(0)
 
 
-def nearest_neighbor_selective_classification(dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    epochs=10, loss='ce', layer=-2, k=1, num_points_to_add=5000):
+def nearest_neighbor_selective_classification(dataset_func, n_classes, input_shape, save_file,
+    model_func=models.simple_softmax_conv_model, epochs=10, loss='ce', layer=-2, k=1,
+    num_points_to_add=2000, accumulate=True, use_timestamps=False):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     def new_model():
@@ -72,29 +73,66 @@ def nearest_neighbor_selective_classification(dataset_func, n_classes, input_sha
         trg_reps = rep_model.predict(trg_eval_x)
         trg_acc = np.mean(nn.predict(trg_reps) == trg_eval_y)
         print('Target acc: ', trg_acc)
-        # For each intermediate point, get k nearest neighbor distance, average them.
+        # Number of points to add with self-training.
+        num_unsup = inter_x.shape[0]
+        iters = int(num_unsup / num_points_to_add)
+        if iters * num_points_to_add < num_unsup:
+            iters += 1
+        assert(iters * num_points_to_add >= num_unsup)
+        assert((iters-1) * num_points_to_add < num_unsup)
+        # Gradual self-training.
+        reps, ys = source_reps, src_tr_y
+        for i in range(iters):
+            if use_timestamps:
+                next_xs = inter_x[num_points_to_add*i:num_points_to_add*(i+1)]
+                # Only use the labels for printing accuracy statistics.
+                next_ys = inter_y[num_points_to_add*i:num_points_to_add*(i+1)]
+            else:
+                pass
+            next_reps = rep_model.predict(next_xs)
+            assert(len(next_reps.shape) == 2)
+            next_pseudo_ys = nn.predict(next_reps)
+            print(next_pseudo_ys.shape)
+            # assert(len(next_pseudo_ys.shape) == 1)
+            if accumulate:
+                reps = np.concatenate([reps, next_reps])
+                ys = np.concatenate([ys, next_pseudo_ys])
+            else:
+                reps, ys = next_reps, next_pseudo_ys
+            nn.fit(reps, ys)
+            cur_acc = np.mean(nn.predict(next_reps) == next_ys)
+            print("Iteration %d: %.2f" % (i+1, cur_acc*100))
+        # Target accuracy.
+        trg_reps = rep_model.predict(trg_eval_x)
+        trg_acc = np.mean(nn.predict(trg_reps) == trg_eval_y)
+        print('Final Target acc: ', trg_acc) 
         inter_reps = rep_model.predict(inter_x)
-        neigh_dist, _ = nn.kneighbors(X=inter_reps, n_neighbors=k, return_distance=True)
-        ave_dist = np.mean(neigh_dist, axis=1)
-        print(ave_dist.shape)
-        indices = np.argsort(ave_dist)
-        keep_points = indices[:num_points_to_add]
-        utils.plot_histogram(keep_points / 42000.0)
-        # Get accuracy on the selected points.
-        print("Accuracy on easy examples")
-        easy_x = inter_x[keep_points]
-        easy_y = inter_y[keep_points]
-        easy_reps = rep_model.predict(easy_x)
-        easy_acc = np.mean(nn.predict(easy_reps) == easy_y)
-        print('Easy acc: ', easy_acc)
+        inter_acc = np.mean(nn.predict(inter_reps) == inter_y)
+        print('Intermediate acc')
+        # # For each intermediate point, get k nearest neighbor distance, average them.
+        # inter_reps = rep_model.predict(inter_x)
+        # neigh_dist, _ = nn.kneighbors(X=inter_reps, n_neighbors=k, return_distance=True)
+        # ave_dist = np.mean(neigh_dist, axis=1)
+        # print(ave_dist.shape)
+        # indices = np.argsort(ave_dist)
+        # keep_points = indices[:num_points_to_add]
+        # utils.plot_histogram(keep_points / 42000.0)
+        # # Get accuracy on the selected points.
+        # print("Accuracy on easy examples")
+        # easy_x = inter_x[keep_points]
+        # easy_y = inter_y[keep_points]
+        # easy_reps = rep_model.predict(easy_x)
+        # easy_acc = np.mean(nn.predict(easy_reps) == easy_y)
+        # print('Easy acc: ', easy_acc)
     run(0)
 
-    # Train a model on source
-    # Get representations for source examples and inter examples
-    # For each inter example find distance to nearest neighbor (or ave to k nearest)
-    # Confidence is negative distance
-    # Select top 2000 confident, plot histogram
-    # argsort and plot confidences
+
+def rotated_mnist_60_conv_nn_experiment():
+    nearest_neighbor_selective_classification(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/rot_mnist_60_conv_oracle_all.dat',
+        model_func=models.simple_softmax_conv_model, epochs=10, loss='ce', layer=-2, k=1,
+        use_timestamps=True, accumulate=False)
 
 
 def rotated_mnist_60_conv_oracle_all_experiment():
@@ -104,11 +142,11 @@ def rotated_mnist_60_conv_oracle_all_experiment():
         model_func=models.simple_softmax_conv_model, epochs=10, loss='ce')
 
 
-def rotated_mnist_60_conv_nn_experiment():
-    nearest_neighbor_selective_classification(
-        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
-        save_file='saved_files/rot_mnist_60_conv_oracle_all.dat',
-        model_func=models.simple_softmax_conv_model, epochs=10, loss='ce', layer=-2, k=1)
+# def rotated_mnist_60_conv_nn_experiment():
+#     nearest_neighbor_selective_classification(
+#         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+#         save_file='saved_files/rot_mnist_60_conv_oracle_all.dat',
+#         model_func=models.simple_softmax_conv_model, epochs=10, loss='ce', layer=-2, k=1)
 
 
 if __name__ == "__main__":
