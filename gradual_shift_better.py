@@ -340,11 +340,13 @@ if __name__ == "__main__":
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=6000)
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.5, interval=6000)
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=20000)
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=3000)
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_False.dat')
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_True.dat')
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_6000_True.dat')
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True.dat')
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_20000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_3000_True.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
