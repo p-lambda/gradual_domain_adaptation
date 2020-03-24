@@ -260,6 +260,30 @@ def learn_gradual_experiment_results(save_name):
           mult * np.std(final_accs))
 
 
+def windowed_vs_accum_experiment_results(save_name):
+    results = pickle.load(open(save_name, "rb"))
+    print(results)
+    gradual_accs, pooled_final_accs, pooled_all_accs, accumulated_final_accs, accumulated_all_accs = [], [], [], [], []
+    for gradual_acc, pooled_final_acc, pooled_all_acc, accumulated_final_acc, accumulated_all_acc in results:
+        gradual_accs.append(gradual_accs)
+        pooled_final_accs.append(pooled_final_acc)
+        pooled_all_accs.append(pooled_all_acc)
+        accumulated_final_accs.append(accumulated_final_acc)
+        accumulated_all_accs.append(accumulated_all_acc)
+    num_runs = len(gradual_accs)
+    mult = 1.645 / np.sqrt(num_runs)  # For 90% confidence intervals
+    print("\nGradual final (%): ", np.mean(gradual_accs),
+          mult * np.std(gradual_accs))
+    print("\nPooled final (%): ", np.mean(pooled_final_accs),
+          mult * np.std(pooled_final_accs))
+    print("\nPooled all (%): ", np.mean(pooled_all_accs),
+          mult * np.std(pooled_all_accs))
+    print("\nAccumulated final (%): ", np.mean(accumulated_final_accs),
+          mult * np.std(accumulated_final_accs))
+    print("\nAccumulated all (%): ", np.mean(accumulated_all_accs),
+          mult * np.std(accumulated_all_accs))
+
+
 def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True):
     def model(n_classes, input_shape):
         return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
@@ -418,17 +442,20 @@ if __name__ == "__main__":
     # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
     # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
     # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False/results.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True/results.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True/results.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True/results.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True/results.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True/results.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
 
     # # Compare windowed and accumulated approach.
     # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
     # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
     # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
+    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
+    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
+    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
