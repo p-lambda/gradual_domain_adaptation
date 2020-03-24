@@ -93,6 +93,72 @@ def run_experiment(
     pickle.dump(results, open(save_file, "wb"))
 
 
+def windowed_vs_accumulate_experiment(
+    dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
+    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.0, num_runs=20, num_repeats=None):
+    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
+        trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    if soft:
+        src_tr_y = to_categorical(src_tr_y)
+        src_val_y = to_categorical(src_val_y)
+        trg_eval_y = to_categorical(trg_eval_y)
+        dir_inter_y = to_categorical(dir_inter_y)
+        inter_y = to_categorical(inter_y)
+        trg_test_y = to_categorical(trg_test_y)
+    if num_repeats is None:
+        num_repeats = int(inter_x.shape[0] / interval)
+    def new_model():
+        model = model_func(n_classes, input_shape=input_shape)
+        compile_model(model, loss)
+        return model
+    def student_func(teacher):
+        return teacher
+    def run(seed):
+        utils.rand_seed(seed)
+        trg_eval_x = trg_val_x
+        trg_eval_y = trg_val_y
+        # Train source model.
+        source_model = new_model()
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
+        _, src_acc = source_model.evaluate(src_val_x, src_val_y)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        # Gradual self-training.
+        print("\n\n Gradual self-training:")
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        gradual_accuracies, student, unsup_pseudolabels = utils.gradual_self_train(
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, interval,
+            epochs=epochs, soft=soft, confidence_q=conf_q, accumulate=False)
+        _, gradual_acc = student.evaluate(trg_eval_x, trg_eval_y)
+        print("final gradual acc: ", gradual_acc)
+        pooled_student = new_model()
+        pooled_student.set_weights(source_model.get_weights())
+        pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
+        _, pooled_final_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
+        _, pooled_all_acc = pooled_student.evaluate(inter_x, inter_y)
+        print("pooled final acc: ", pooled_final_acc)
+        print("pooled all acc: ", pooled_all_acc)
+        assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
+        # Train to target.
+        print("\n\n Accumulating gradual self-training")
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        gradual_accuracies, student, unsup_pseudolabels = utils.gradual_self_train(
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, interval,
+            epochs=epochs, soft=soft, confidence_q=conf_q, accumulate=True)
+        assert unsup_pseudolabels == []
+        _, accumulated_final_acc = student.evaluate(trg_eval_x, trg_eval_y)
+        _, accumulated_all_acc = student.evaluate(inter_x, inter_y)
+        print("accumulated final acc: ", accumulated_final_acc)
+        print("accumulated all acc: ", accumulated_all_acc)
+        return gradual_acc, pooled_final_acc, pooled_all_acc, accumulated_final_acc, accumulated_all_acc
+    results = []
+    for i in range(num_runs):
+        results.append(run(i))
+    print('Saving to ' + save_file)
+    pickle.dump(results, open(save_file, "wb"))
+
+
 def learn_gradual_structure_experiment(
     dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', soft=False, num_runs=20, num_repeats=None, use_src=True):
@@ -194,15 +260,26 @@ def learn_gradual_experiment_results(save_name):
           mult * np.std(final_accs))
 
 
-def rotated_mnist_60_conv_learn_structure_experiment(l2_reg, interval, use_src=True):
+def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True):
     def model(n_classes, input_shape):
-        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, l2_reg=l2_reg)
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
-        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(l2_reg) + '_' +
+        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
                      str(interval) + '_' + str(use_src)),
         model_func=model, interval=interval, epochs=10, loss='ce', soft=False,
         num_runs=5, use_src=use_src)
+
+
+def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval):
+    def model(n_classes, input_shape):
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
+    save_file = ('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_' + str(dropout) + '_' +
+                 str(interval) + '.dat')
+    windowed_vs_accumulate_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file=save_file, model_func=model, interval=interval, epochs=10, loss='ce',
+        soft=False, conf_q=0.0, num_runs=1, num_repeats=None)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -335,18 +412,23 @@ def gaussian_linear_experiment_more_epochs():
 
 if __name__ == "__main__":
     # Learn gradual structure.
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.0, interval=6000, use_src=False)
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.0, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.5, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=20000)
-    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=3000)
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_False.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_6000_True.dat')
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000, use_src=False)
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000)
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.5, interval=6000)
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
+    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True.dat')
     learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_20000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_3000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True.dat')
+
+    # Compare windowed and accumulated approach.
+    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
+    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
+    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
 
     # # Main paper experiments.
     # portraits_conv_experiment()
