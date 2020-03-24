@@ -3,6 +3,7 @@ import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
 def rand_seed(seed):
     np.random.seed(seed)
@@ -74,19 +75,22 @@ def gradual_self_train(student_func, teacher, unsup_x, debug_y, interval, confid
     return accuracies, student, unsup_pseudolabels
 
 
-def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pts, save_folder, seed,
-                             epochs=20, soft=False):
+def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug_y,
+                             num_new_pts, save_folder, seed, epochs=20, soft=False, use_src=True):
     num_unsup = unsup_x.shape[0]
     iters = int(num_unsup / num_new_pts)
     if iters * num_new_pts < num_unsup:
         iters += 1
     assert(iters * num_new_pts >= num_unsup)
     assert((iters-1) * num_new_pts < num_unsup)
-    accuracies = []
+    cur_accuracies = []
+    all_accuracies = []
+    pseudo_losses = []
+    disagreements = []
     for i in range(iters):
         student = student_func(teacher)
         num_points_to_add = min((i+1) * num_new_pts, num_unsup)
-        logits = teacher.predict(np.concatenate([unsup_x]))
+        logits = teacher.predict(unsup_x)
         # TODO: maybe change this to be top minus second top.
         confidence = np.amax(logits, axis=1)
         indices = np.argsort(confidence)
@@ -99,19 +103,49 @@ def self_train_learn_gradual(student_func, teacher, unsup_x, debug_y, num_new_pt
         # plt.show()
         # Show histogram of angles for the points to add.
         # plot_histogram(indices[-num_points_to_add:] / 40000.0)
-        indices = indices[-num_points_to_add:]
-        preds = np.argmax(logits, axis=1)
-        cur_xs = unsup_x[indices]
-        cur_ys = debug_y[indices]
-        pred_acc = np.mean(preds[indices] == cur_ys)
-        print('accuracy: ', pred_acc)
-        student.fit(cur_xs, preds[indices], epochs=epochs, verbose=False)
-        _, accuracy = student.evaluate(cur_xs, cur_ys)
-        accuracies.append(accuracy)
+        teacher_preds = np.argmax(logits, axis=1)
+        select_indices = indices[-num_points_to_add:]
+        cur_xs = unsup_x[select_indices]
+        cur_ys = debug_y[select_indices]
+        pseudo_ys = teacher_preds[select_indices]
+        cur_acc = np.mean(pseudo_ys == cur_ys)
+        cur_accuracies.append(cur_acc)
+        print('accuracy: ', cur_acc)
+        all_acc = np.mean(teacher_preds == debug_y)
+        all_accuracies.append(all_acc)
+        print('all acc: ', all_acc)
+        if use_src:
+            student.fit(np.concatenate([src_tr_x, cur_xs], axis=0),
+                        np.concatenate([src_tr_y, pseudo_ys], axis=0),
+                        epochs=epochs, verbose=False)
+        else:
+            student.fit(cur_xs, pseudo_ys, epochs=epochs, verbose=False)
+        pseudo_loss, _ = student.evaluate(cur_xs, pseudo_ys)
+        pseudo_losses.append(pseudo_loss)
+        student_preds = np.argmax(student.predict(cur_xs), axis=1)
+        student_teacher_disagreement = np.mean(student_preds != pseudo_ys)
+        disagreements.append(student_teacher_disagreement)
         teacher = student
-    # Print average, min, max student teacher agreement
-    # Plot accuracy on entire unsup data and on current set.
-    return accuracies, student
+    disagreement_summary = (np.min(disagreements), np.mean(disagreements),
+                            np.max(disagreements))
+    print('teacher disagreements: ', disagreement_summary)
+    # Save accuracy and loss plots.
+    save_name = save_folder + '/all_accs_' + str(seed)
+    save_plot(save_name, all_accuracies, x_label='self-training iters', y_label='all acc')
+    save_name = save_folder + '/pseudo_losses_' + str(seed)
+    save_plot(save_name, pseudo_losses, x_label='self-training iters', y_label='pseudo losses')
+    save_name = save_folder + '/cur_accs_' + str(seed)
+    save_plot(save_name, cur_accuracies, x_label='self-training iters', y_label='cur acc')
+    return disagreement_summary, all_accuracies, pseudo_losses, cur_accuracies, student
+
+
+def save_plot(save_name, values, x_label, y_label):
+    plt.clf()
+    plt.plot(list(range(len(values))), values)
+    plt.ylabel(y_label)
+    plt.xlabel(x_label)
+    plt.tight_layout()
+    plt.savefig(save_name)
 
 
 def split_data(xs, ys, splits):

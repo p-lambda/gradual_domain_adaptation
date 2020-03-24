@@ -8,6 +8,7 @@ from tensorflow.keras import metrics
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 import pickle
+import os
 
 
 def compile_model(model, loss='ce'):
@@ -94,7 +95,7 @@ def run_experiment(
 
 def learn_gradual_structure_experiment(
     dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
-    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None):
+    interval=2000, epochs=10, loss='ce', soft=False, num_runs=20, num_repeats=None, use_src=True):
     if not os.path.exists(save_folder):
         os.mkdir(save_folder)
     else:
@@ -129,12 +130,13 @@ def learn_gradual_structure_experiment(
         print("\n\n Learn gradual structure")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
-        learn_accuracies, student = utils.self_train_learn_gradual(
-            student_func, teacher, inter_x, inter_y, num_new_pts=interval, epochs=epochs, soft=soft,
-            save_folder=save_folder, seed=seed)
-        _, acc = student.evaluate(trg_eval_x, trg_eval_y)
-        learn_accuracies.append(acc)
-        return learn_accuracies
+        (disagreement_summary, all_accuracies, pseudo_losses,
+         cur_accuracies, student) = utils.self_train_learn_gradual(
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_new_pts=interval,
+            epochs=epochs, soft=soft, save_folder=save_folder, seed=seed, use_src=use_src)
+        _, all_acc = student.evaluate(inter_x, inter_y)
+        _, final_acc = student.evaluate(trg_eval_x, trg_eval_y)
+        return all_acc, final_acc
     results = []
     for i in range(num_runs):
         results.append(run(i))
@@ -177,15 +179,30 @@ def experiment_results(save_name):
           mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
-def rotated_mnist_60_conv_learn_structure_experiment(l2_reg, interval):
+def learn_gradual_experiment_results(save_name):
+    results = pickle.load(open(save_name, "rb"))
+    print(results)
+    all_accs, final_accs = [], []
+    for all_acc, final_acc in results:
+        all_accs.append(all_acc * 100)
+        final_accs.append(final_acc * 100)
+    num_runs = len(src_accs)
+    mult = 1.645 / np.sqrt(num_runs)  # For 90% confidence intervals
+    print("\nAccuracy on intermediate (%): ", np.mean(all_accs),
+          mult * np.std(all_accs))
+    print("\nAccuracy on end (%): ", np.mean(final_accs),
+          mult * np.std(final_accs))
+
+
+def rotated_mnist_60_conv_learn_structure_experiment(l2_reg, interval, use_src=True):
     def model(n_classes, input_shape):
         return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, l2_reg=l2_reg)
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(l2_reg) + '_' +
-                   str(interval)),
-        model_func=model, interval=interval, epochs=10, loss='ce', soft=False, conf_q=0.0,
-        num_runs=5)
+                     str(interval) + '_' + str(use_src)),
+        model_func=model, interval=interval, epochs=10, loss='ce', soft=False,
+        num_runs=5, use_src=use_src)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -318,12 +335,16 @@ def gaussian_linear_experiment_more_epochs():
 
 if __name__ == "__main__":
     # Learn gradual structure.
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.0, interval=6000, use_src=False)
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.0, interval=6000)
-    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=6000)
-    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
     rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.5, interval=6000)
-    experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000.dat')
+    rotated_mnist_60_conv_learn_structure_experiment(l2_reg=0.1, interval=20000)
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_False.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.0_6000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_6000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True.dat')
+    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.1_20000_True.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
