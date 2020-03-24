@@ -412,23 +412,23 @@ def gaussian_linear_experiment_more_epochs():
 
 if __name__ == "__main__":
     # Learn gradual structure.
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000, use_src=False)
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.5, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
-    rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True.dat')
-    learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True.dat')
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000, use_src=False)
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000)
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.5, interval=6000)
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
+    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True.dat')
+    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True.dat')
 
     # Compare windowed and accumulated approach.
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
 
     # # Main paper experiments.
     # portraits_conv_experiment()
