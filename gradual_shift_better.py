@@ -252,7 +252,7 @@ def learn_gradual_experiment_results(save_name):
     for all_acc, final_acc in results:
         all_accs.append(all_acc * 100)
         final_accs.append(final_acc * 100)
-    num_runs = len(src_accs)
+    num_runs = len(all_accs)
     mult = 1.645 / np.sqrt(num_runs)  # For 90% confidence intervals
     print("\nAccuracy on intermediate (%): ", np.mean(all_accs),
           mult * np.std(all_accs))
