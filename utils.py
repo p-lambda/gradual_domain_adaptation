@@ -3,7 +3,6 @@ import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
 def rand_seed(seed):
     np.random.seed(seed)
