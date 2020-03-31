@@ -178,7 +178,8 @@ def windowed_vs_accumulate_experiment(
 
 def learn_gradual_structure_experiment(
     dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
-    interval=2000, epochs=10, loss='ce', soft=False, num_runs=20, num_repeats=None, use_src=True):
+    interval=2000, epochs=10, loss='ce', soft=False, num_runs=20, num_repeats=None, use_src=True,
+    conf_stop=1.0):
     if not os.path.exists(save_folder):
         os.mkdir(save_folder)
     else:
@@ -216,7 +217,8 @@ def learn_gradual_structure_experiment(
         (disagreement_summary, all_accuracies, pseudo_losses,
          cur_accuracies, student) = utils.self_train_learn_gradual(
             student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_new_pts=interval,
-            epochs=epochs, soft=soft, save_folder=save_folder, seed=seed, use_src=use_src)
+            epochs=epochs, soft=soft, save_folder=save_folder, seed=seed, use_src=use_src,
+            conf_stop=conf_stop)
         _, all_acc = student.evaluate(inter_x, inter_y)
         _, final_acc = student.evaluate(trg_eval_x, trg_eval_y)
         return all_acc, final_acc
@@ -301,15 +303,19 @@ def windowed_vs_accum_experiment_results(save_name):
           mult * np.std(accumulated_all_accs))
 
 
-def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True):
+def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True, conf_stop=1.0):
     def model(n_classes, input_shape):
         return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
+    if conf_stop == 1.0:
+        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
+                     str(interval) + '_' + str(use_src))
+    else:
+        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
+                     str(interval) + '_' + str(conf_stop) + '_' + str(use_src))
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
-        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
-                     str(interval) + '_' + str(use_src)),
-        model_func=model, interval=interval, epochs=10, loss='ce', soft=False,
-        num_runs=5, use_src=use_src)
+        save_folder=save_folder, model_func=model, interval=interval, epochs=10, loss='ce',
+        soft=False, num_runs=5, use_src=use_src, conf_stop=conf_stop)
 
 
 def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval, retrain):
@@ -479,6 +485,16 @@ if __name__ == "__main__":
         windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
         windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
         windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
+
+    elif args.experiment_name == "no_overtrain":
+        # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.95)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.9998)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.999)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.998)
+        # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.95_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.9998_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.998_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.999_True/results.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()

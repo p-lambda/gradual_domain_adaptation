@@ -81,7 +81,9 @@ def gradual_self_train(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug
 
 
 def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug_y,
-                             num_new_pts, save_folder, seed, epochs=20, soft=False, use_src=True):
+                             num_new_pts, save_folder, seed, epochs=20, soft=False, use_src=True,
+                             accumulate=True, conf_stop=1.0):
+    # TODO: deal with accumulation.
     num_unsup = unsup_x.shape[0]
     iters = int(num_unsup / num_new_pts)
     if iters * num_new_pts < num_unsup:
@@ -99,6 +101,15 @@ def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x,
         # TODO: maybe change this to be top minus second top.
         confidence = np.amax(logits, axis=1)
         indices = np.argsort(confidence)
+        select_indices = indices[-num_points_to_add:]
+        # Don't train on predictions the model is "too" confident about. We don't want to overtrain.
+        # But we don't want to filter out pretty much all the examples with this filtering process.
+        print("Filtering out # examples: ", np.sum(confidence > conf_stop))
+        print(np.max(confidence))
+        too_conf_count = np.minimum(select_indices.shape[0] / 2, np.sum(confidence > conf_stop))
+        too_conf_count = int(too_conf_count)
+        select_indices = select_indices[:-too_conf_count]
+        # Filter out indices with confidence above the threshold (the real easy ones)
         # Plot scatter plot
         # Plot average angle as function of confidence
         # Plot histogram of angles for points to add
@@ -109,7 +120,6 @@ def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x,
         # Show histogram of angles for the points to add.
         # plot_histogram(indices[-num_points_to_add:] / 40000.0)
         teacher_preds = np.argmax(logits, axis=1)
-        select_indices = indices[-num_points_to_add:]
         cur_xs = unsup_x[select_indices]
         cur_ys = debug_y[select_indices]
         pseudo_ys = teacher_preds[select_indices]
