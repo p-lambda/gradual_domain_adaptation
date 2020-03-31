@@ -1,7 +1,7 @@
 
-import utils
-import models
-import datasets
+import gradual_st.utils as utils
+import gradual_st.models as models
+import gradual_st.datasets as datasets
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import metrics

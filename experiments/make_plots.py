@@ -1,7 +1,6 @@
 
 import pickle
-import utils
-import numpy as np
+import gradual_st.utils as utils
 import matplotlib.pyplot as plt
 from matplotlib import rc
 

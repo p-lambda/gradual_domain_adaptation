@@ -1,7 +1,8 @@
 
-import utils
-import models
-import datasets
+import argparse
+import gradual_st.utils as utils
+import gradual_st.models as models
+import gradual_st.datasets as datasets
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import metrics
@@ -9,6 +10,10 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 import pickle
 import os
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--experiment_name', default='windowed_vs_accumulate', type=str,
+                    help='Name of experiment to run.')
 
 
 def compile_model(model, loss='ce'):
@@ -25,6 +30,16 @@ def train_model_source(model, split_data, epochs=1000):
     print("Target accuracy:")
     _, target_acc = model.evaluate(split_data.target_val_x, split_data.target_val_y)
     return src_acc, target_acc
+
+
+def student_func_gen(model_func, retrain, loss):
+    def student_func(teacher):
+        if retrain:
+            model = model_func()
+            compile_model(model, loss)
+            return model
+        return teacher
+    return student_func
 
 
 def run_experiment(
@@ -95,7 +110,8 @@ def run_experiment(
 
 def windowed_vs_accumulate_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.0, num_runs=20, num_repeats=None):
+    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.0, num_runs=20, num_repeats=None,
+    retrain=False):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     if soft:
@@ -111,8 +127,9 @@ def windowed_vs_accumulate_experiment(
         model = model_func(n_classes, input_shape=input_shape)
         compile_model(model, loss)
         return model
-    def student_func(teacher):
-        return teacher
+    student_func = student_func_gen(
+        model_func=lambda: model_func(n_classes, input_shape=input_shape),
+        retrain=retrain, loss=loss)
     def run(seed):
         utils.rand_seed(seed)
         trg_eval_x = trg_val_x
@@ -295,15 +312,16 @@ def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=
         num_runs=5, use_src=use_src)
 
 
-def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval):
+def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval, retrain):
     def model(n_classes, input_shape):
         return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
     save_file = ('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_' + str(dropout) + '_' +
-                 str(interval) + '.dat')
+                 str(interval) + '_' + str(retrain) + '.dat')
     windowed_vs_accumulate_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file=save_file, model_func=model, interval=interval, epochs=10, loss='ce',
-        soft=False, conf_q=0.0, num_runs=1, num_repeats=None)
+        soft=False, conf_q=0.0, num_runs=5, num_repeats=None, retrain=retrain)
+
 
 
 def rotated_mnist_60_conv_experiment():
@@ -435,27 +453,32 @@ def gaussian_linear_experiment_more_epochs():
 
 
 if __name__ == "__main__":
-    # # Learn gradual structure.
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000, use_src=False)
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000)
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.5, interval=6000)
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
-    # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False/results.dat')
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True/results.dat')
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True/results.dat')
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True/results.dat')
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True/results.dat')
-    # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
+    args = parser.parse_args()
+
+    # Learn gradual structure.
+    if args.experiment_name == "learn_gradual_sweep":
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000, use_src=False)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=6000)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.5, interval=6000)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.9, interval=6000)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=20000)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000)
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_False/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_6000_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.5_6000_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.9_6000_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True/results.dat')
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
 
     # Compare windowed and accumulated approach.
-    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
-    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
-    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
-    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
-    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
-    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
+    elif args.experiment_name == "windowed_vs_accumulate":
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=True)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000, retrain=False)
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
