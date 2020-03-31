@@ -449,13 +449,13 @@ if __name__ == "__main__":
     # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_20000_True/results.dat')
     # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
 
-    # # Compare windowed and accumulated approach.
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
-    # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
-    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
-    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
-    windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
+    # Compare windowed and accumulated approach.
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000)
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000)
+    rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000)
+    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
+    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
+    # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
     # # Main paper experiments.
     # portraits_conv_experiment()
