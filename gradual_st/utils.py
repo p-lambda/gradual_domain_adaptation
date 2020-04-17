@@ -94,25 +94,30 @@ def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x,
     all_accuracies = []
     pseudo_losses = []
     disagreements = []
+    accumulated_xs = []
+    accumulated_pseudo = []
     for i in range(iters):
         student = student_func(teacher)
-        num_points_to_add = min((i+1) * num_new_pts, num_unsup)
         logits = teacher.predict(unsup_x)
         # TODO: maybe change this to be top minus second top.
         confidence = np.amax(logits, axis=1)
         indices = np.argsort(confidence)
-        select_indices = indices[-num_points_to_add:]
+        if accumulate:
+            num_points_to_add = min((i+1) * num_new_pts, num_unsup)
+            select_indices = indices[-num_points_to_add:]
+        else:
+            assert conf_stop == 1.0
+            num_points_to_add = num_new_pts
+            select_indices = indices[-num_points_to_add:]
+            print("selected indices shape", select_indices.shape)
         # Don't train on predictions the model is "too" confident about. We don't want to overtrain.
         # But we don't want to filter out pretty much all the examples with this filtering process.
         print("Filtering out # examples: ", np.sum(confidence > conf_stop))
         print(np.max(confidence))
         too_conf_count = np.minimum(select_indices.shape[0] / 2, np.sum(confidence > conf_stop))
         too_conf_count = int(too_conf_count)
-        select_indices = select_indices[:-too_conf_count]
-        # Filter out indices with confidence above the threshold (the real easy ones)
-        # Plot scatter plot
-        # Plot average angle as function of confidence
-        # Plot histogram of angles for points to add
+        if too_conf_count > 0:
+            select_indices = select_indices[:-too_conf_count]
         # Plot average index as a function of confidence. Ideally this should be increasing.
         # averages = rolling_average(indices, num_new_pts)
         # plt.plot(list(range(len(averages))), averages)
@@ -140,6 +145,12 @@ def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x,
         student_preds = np.argmax(student.predict(cur_xs), axis=1)
         student_teacher_disagreement = np.mean(student_preds != pseudo_ys)
         disagreements.append(student_teacher_disagreement)
+        if not accumulate:
+            unsup_x = unsup_x[indices[:-num_points_to_add]]
+            print("unsup data shape", unsup_x.shape)
+            debug_y = debug_y[indices[:-num_points_to_add]]
+            accumulated_xs.append(cur_xs)
+            accumulated_pseudo.append(pseudo_ys)
         teacher = student
     disagreement_summary = (np.min(disagreements), np.mean(disagreements),
                             np.max(disagreements))
@@ -151,7 +162,135 @@ def self_train_learn_gradual(student_func, teacher, src_tr_x, src_tr_y, unsup_x,
     save_plot(save_name, pseudo_losses, x_label='self-training iters', y_label='pseudo losses')
     save_name = save_folder + '/cur_accs_' + str(seed)
     save_plot(save_name, cur_accuracies, x_label='self-training iters', y_label='cur acc')
-    return disagreement_summary, all_accuracies, pseudo_losses, cur_accuracies, student
+    if not accumulate:
+        accumulated_xs.append(src_tr_x)
+        accumulated_pseudo.append(src_tr_y)
+        accumulated_xs = np.concatenate(accumulated_xs)
+        accumulated_pseudo = np.concatenate(accumulated_pseudo)
+    return disagreement_summary, all_accuracies, pseudo_losses, cur_accuracies, student, accumulated_xs, accumulated_pseudo
+
+
+def safe_ceil_divide(a, b):
+    # a and b should be positive integers
+    assert a > 0 and b > 0
+    r = int(a / b)
+    if b * r < a:
+        r += 1
+    assert(r * b >= a)
+    assert((r-1) * b < a)
+    return r
+
+
+def split(sequence, parts):
+    assert parts <= len(sequence)
+    part_size = int(np.ceil(len(sequence) * 1.0 / parts))
+    assert part_size * parts >= len(sequence)
+    assert (part_size - 1) * parts < len(sequence)
+    return [sequence[i:i + part_size] for i in range(0, len(sequence), part_size)]
+
+
+def check_split_shapes(splitted, original):
+    assert type(splitted) == list
+    assert len(splitted[0].shape) == len(original.shape)
+    assert sum([xs.shape[0] for xs in splitted]) == original.shape[0]
+
+
+def get_mean_group_confidences(confidences, num_groups):
+    grouped_confidences = split(confidences, num_groups)
+    check_split_shapes(grouped_confidences, confidences)
+    assert len(grouped_confidences[0].shape) == 1
+    mean_confidences = [np.mean(c) for c in grouped_confidences]
+    return mean_confidences
+
+
+def get_most_confident_group_indices(group_confidences, num_groups_to_add):
+    assert num_groups_to_add > 0
+    num_groups_to_add = min(num_groups_to_add, len(group_confidences))
+    indices = np.argsort(group_confidences)
+    selected_groups = indices[-num_groups_to_add:]
+    return selected_groups
+
+
+def get_selected_indices(num_pts, num_groups, selected_groups):
+    grouped_indices = split(list(range(num_pts)), num_groups)
+    assert type(grouped_indices[0]) == list
+    grouped_selected_indices = [grouped_indices[g] for g in selected_groups]
+    flatten = lambda l: [item for sublist in l for item in sublist]
+    selected_indices = flatten(grouped_selected_indices)
+    assert type(selected_indices) == list
+    assert type(selected_indices[0]) == int
+    group_size = int(np.ceil(num_pts * 1.0 / num_groups))
+    assert len(selected_indices) <= group_size * len(selected_groups)
+    assert len(selected_indices) > group_size * (len(selected_groups) - 1)
+    return selected_indices
+
+
+def self_train_from_pseudolabels(student, src_tr_x, src_tr_y, unsup_x, teacher_preds,
+                                 selected_indices, epochs):
+    cur_xs = unsup_x[selected_indices]
+    cur_teacher_preds = teacher_preds[selected_indices]
+    student.fit(np.concatenate([src_tr_x, cur_xs], axis=0),
+                np.concatenate([src_tr_y, cur_teacher_preds], axis=0),
+                epochs=epochs, verbose=False)
+
+
+def get_stats(student, unsup_x, teacher_preds, debug_y, selected_indices):
+    cur_xs = unsup_x[selected_indices]
+    cur_teacher_preds = teacher_preds[selected_indices]
+    cur_ys = debug_y[selected_indices]
+    cur_acc = np.mean(cur_ys == cur_teacher_preds)
+    all_acc = np.mean(teacher_preds == debug_y)
+    student_preds = np.argmax(student.predict(cur_xs), axis=1)
+    student_teacher_disagreement = np.mean(student_preds != cur_teacher_preds)
+    pseudo_loss, _ = student.evaluate(cur_xs, cur_teacher_preds, verbose=False)
+    return all_acc, cur_acc, student_teacher_disagreement, pseudo_loss
+
+
+def print_stats(stats):
+    all_acc, cur_acc, student_teacher_disagreement, pseudo_loss = stats
+    print('{:<10} {:<10} {:<15} {}'.format('All Acc', 'Cur Acc', 'Stu-Tea-Dis', 'Pseudo-loss'))
+    print('{:<10.2f} {:<10.2f} {:<15.2f} {:.2f}'.format(
+        all_acc * 100, cur_acc * 100, student_teacher_disagreement * 100, pseudo_loss * 100))
+
+
+def save_stats(save_folder, seed, stats_list):
+    print("Save function to be implemented.")
+
+
+def get_quantiles(values, num_groups):
+    values = values / float(num_groups)
+    return (np.quantile(values, 0.1), np.quantile(values, 0.25), np.quantile(values, 0.5),
+        np.quantile(values, 0.75), np.quantile(values, 0.9))
+
+
+def self_train_learn_gradual_group(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug_y, num_groups,
+                                   num_new_groups, save_folder, seed, epochs=20):
+    assert num_new_groups < num_groups
+    num_iters = safe_ceil_divide(num_groups, num_new_groups)
+    stats_list = []
+    for i in range(num_iters):
+        student = student_func(teacher)
+        logits = teacher.predict(unsup_x)
+        confidences = np.amax(logits, axis=1)
+        teacher_preds = np.argmax(logits, axis=1)
+        mean_group_confidences = get_mean_group_confidences(confidences, num_groups)
+        confidence_ranks_by_time = get_confidence_ranks_by_time(mean_group_confidences)
+        plot_confidence_ranks_by_time(confidence_ranks_by_time)
+        selected_groups = get_most_confident_group_indices(mean_group_confidences,
+                                                           (i+1) * num_new_groups)
+        interquartiles = get_quantiles(selected_groups, num_groups)
+        print("Quantiles of selected groups: ", interquartiles)
+        selected_indices = get_selected_indices(len(unsup_x), num_groups, selected_groups)
+        # Self-training only uses unlabeled intermediate data and pseudolabels.
+        self_train_from_pseudolabels(student, src_tr_x, src_tr_y, unsup_x, teacher_preds,
+                                     selected_indices, epochs)
+        # Get statistics that we can output and save to a file.
+        stats = get_stats(student, unsup_x, teacher_preds, debug_y, selected_indices)
+        print_stats(stats)
+        stats_list.append(stats)
+        teacher = student
+    save_stats(save_folder, seed, stats_list)
+    return stats, student
 
 
 def save_plot(save_name, values, x_label, y_label):
@@ -209,3 +348,21 @@ def plot_histogram(xs):
     plt.hist(xs, bins, alpha=0.5, label='hist')
     plt.show()
 
+
+def invert(xs):
+    # xs should be a sorted list of 0, ..., n-1, unque indices, permuted in some way
+    assert len(xs.shape) == 1
+    inverted_xs = np.zeros(len(xs))
+    inverted_xs[xs] = np.arange(len(xs))
+    return inverted_xs
+
+
+def get_confidence_ranks_by_time(confidences):
+    return invert(np.argsort(confidences))
+
+
+def plot_confidence_ranks_by_time(confidence_ranks_by_time):
+    confidence_ranks_by_time = confidence_ranks_by_time / (len(confidence_ranks_by_time) - 1.0)
+    plt.clf()
+    plt.plot(np.arange(len(confidence_ranks_by_time)), confidence_ranks_by_time)
+    plt.show()

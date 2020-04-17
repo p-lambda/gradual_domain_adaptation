@@ -68,7 +68,7 @@ def run_experiment(
         trg_eval_y = trg_val_y
         # Train source model.
         source_model = new_model()
-        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
+        source_model.fit(src_tr_x[:10000], src_tr_y[:10000], epochs=epochs, verbose=True)
         _, src_acc = source_model.evaluate(src_val_x, src_val_y)
         _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
         # Gradual self-training.
@@ -76,15 +76,15 @@ def run_experiment(
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         gradual_accuracies, student, unsup_pseudolabels = utils.gradual_self_train(
-            student_func, teacher, inter_x, inter_y, interval, epochs=epochs, soft=soft,
-            confidence_q=conf_q)
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, interval,
+            epochs=epochs, soft=soft, confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         print("final gradual acc: ", acc)
-        pooled_student = new_model()
-        pooled_student.set_weights(source_model.get_weights())
-        pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
-        _, acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
-        print("pooled acc: ", acc)
+        # pooled_student = new_model()
+        # pooled_student.set_weights(source_model.get_weights())
+        # pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
+        # _, pooled_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
+        # print("pooled acc: ", pooled_acc)
         assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
         gradual_accuracies.append(acc)
         # Train to target.
@@ -95,11 +95,12 @@ def run_experiment(
             student_func, teacher, dir_inter_x, epochs=epochs, target_x=trg_eval_x,
             target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         print("\n\n Direct boostrap to all unsup data:")
-        teacher = new_model()
-        teacher.set_weights(source_model.get_weights())
-        all_accuracies, _ = utils.self_train(
-            student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
+        all_accuracies = []
+        # teacher = new_model()
+        # teacher.set_weights(source_model.get_weights())
+        # all_accuracies, _ = utils.self_train(
+        #     student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
+        #     target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
     results = []
     for i in range(num_runs):
@@ -179,7 +180,7 @@ def windowed_vs_accumulate_experiment(
 def learn_gradual_structure_experiment(
     dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', soft=False, num_runs=20, num_repeats=None, use_src=True,
-    conf_stop=1.0):
+    conf_stop=1.0, accumulate=True):
     if not os.path.exists(save_folder):
         os.mkdir(save_folder)
     else:
@@ -215,10 +216,63 @@ def learn_gradual_structure_experiment(
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
         (disagreement_summary, all_accuracies, pseudo_losses,
-         cur_accuracies, student) = utils.self_train_learn_gradual(
+         cur_accuracies, student, accum_xs, accum_pseudo) = utils.self_train_learn_gradual(
             student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_new_pts=interval,
             epochs=epochs, soft=soft, save_folder=save_folder, seed=seed, use_src=use_src,
-            conf_stop=conf_stop)
+            conf_stop=conf_stop, accumulate=accumulate)
+        if accumulate:
+            assert accum_xs == []
+            assert accum_pseudo == []
+            model = student
+        else:
+            model = new_model()
+            model.fit(accum_xs, accum_pseudo, epochs=epochs, verbose=False)
+        _, all_acc = model.evaluate(inter_x, inter_y)
+        _, final_acc = model.evaluate(trg_eval_x, trg_eval_y)
+        return all_acc, final_acc
+    results = []
+    for i in range(num_runs):
+        results.append(run(i))
+        print(results[-1])
+    print(results)
+    save_file=save_folder + '/results.dat'
+    print('Saving to ' + save_file)
+    pickle.dump(results, open(save_file, "wb"))
+    return save_file
+
+
+def learn_gradual_grouped_experiment(
+    dataset_func, n_classes, input_shape, save_folder, model_func=models.simple_softmax_conv_model,
+    num_new_groups=20, epochs=10, loss='ce',num_runs=20, num_groups=420, retrain=False):
+    if not os.path.exists(save_folder):
+        os.mkdir(save_folder)
+    else:
+        print("Warning: folder already exists, overwriting.")
+    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
+        trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    def new_model():
+        model = model_func(n_classes, input_shape=input_shape)
+        compile_model(model, loss)
+        return model
+    student_func = student_func_gen(
+        model_func=lambda: model_func(n_classes, input_shape=input_shape),
+        retrain=retrain, loss=loss)
+    def run(seed):
+        utils.rand_seed(seed)
+        trg_eval_x = trg_val_x
+        trg_eval_y = trg_val_y
+        # Train source model.
+        source_model = new_model()
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
+        _, src_acc = source_model.evaluate(src_val_x, src_val_y)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        # Learn gradual structure
+        print("\n\n Learn gradual structure")
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        stats, student = utils.self_train_learn_gradual_group(
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_groups=num_groups,
+            num_new_groups=num_new_groups, save_folder=save_folder, seed=seed, epochs=epochs)
         _, all_acc = student.evaluate(inter_x, inter_y)
         _, final_acc = student.evaluate(trg_eval_x, trg_eval_y)
         return all_acc, final_acc
@@ -243,9 +297,14 @@ def experiment_results(save_name):
         target_accs.append(100 * target_acc)
         final_graduals.append(100 * gradual_accuracies[-1])
         final_targets.append(100 * target_accuracies[-1])
-        final_alls.append(100 * all_accuracies[-1])
+        # final_alls.append(100 * all_accuracies[-1])
         best_targets.append(100 * np.max(target_accuracies))
-        best_alls.append(100 * np.max(all_accuracies))
+        # best_alls.append(100 * np.max(all_accuracies))
+    target_accs = np.array(target_accs)
+    final_targets = np.array(final_targets)
+    final_graduals = np.array(final_graduals) - final_targets
+    # final_alls = np.array(final_alls) - target_accs
+    final_targets = np.array(final_targets) - target_accs
     num_runs = len(src_accs)
     mult = 1.645  # For 90% confidence intervals
     print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
@@ -256,12 +315,12 @@ def experiment_results(save_name):
           mult * np.std(final_graduals) / np.sqrt(num_runs))
     print("Target self-train accuracy (%): ", np.mean(final_targets),
           mult * np.std(final_targets) / np.sqrt(num_runs))
-    print("All self-train accuracy (%): ", np.mean(final_alls),
-          mult * np.std(final_alls) / np.sqrt(num_runs))
+    # print("All self-train accuracy (%): ", np.mean(final_alls),
+    #       mult * np.std(final_alls) / np.sqrt(num_runs))
     print("Best of Target self-train accuracies (%): ", np.mean(best_targets),
           mult * np.std(best_targets) / np.sqrt(num_runs))
-    print("Best of All self-train accuracies (%): ", np.mean(best_alls),
-          mult * np.std(best_alls) / np.sqrt(num_runs))
+    # print("Best of All self-train accuracies (%): ", np.mean(best_alls),
+    #       mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
 def learn_gradual_experiment_results(save_name):
@@ -303,19 +362,35 @@ def windowed_vs_accum_experiment_results(save_name):
           mult * np.std(accumulated_all_accs))
 
 
-def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True, conf_stop=1.0):
+def rotated_mnist_60_conv_learn_groups_experiment(dropout, num_groups, num_new_groups, retrain=False):
     def model(n_classes, input_shape):
         return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
-    if conf_stop == 1.0:
+    save_folder=('saved_files/rot_mnist_60_conv_learn_groups_' + str(dropout) + '_' +
+                 str(num_groups) + '_' + str(num_new_groups) + '_' + str(retrain))
+    learn_gradual_grouped_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_folder=save_folder, model_func=model, num_new_groups=num_new_groups, epochs=10, loss='ce',
+        num_runs=5, num_groups=num_groups, retrain=False)
+
+
+def rotated_mnist_60_conv_learn_structure_experiment(dropout, interval, use_src=True, conf_stop=1.0,
+    accumulate=True):
+    def model(n_classes, input_shape):
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
+    if conf_stop == 1.0 and accumulate:
         save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
                      str(interval) + '_' + str(use_src))
+    elif not accumulate:
+        assert conf_stop == 1.0
+        save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
+                     str(interval) + '_' + str(accumulate) + '_' + str(use_src))
     else:
         save_folder=('saved_files/rot_mnist_60_conv_learn_structure_' + str(dropout) + '_' +
                      str(interval) + '_' + str(conf_stop) + '_' + str(use_src))
     learn_gradual_structure_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_folder=save_folder, model_func=model, interval=interval, epochs=10, loss='ce',
-        soft=False, num_runs=5, use_src=use_src, conf_stop=conf_stop)
+        soft=False, num_runs=5, use_src=use_src, conf_stop=conf_stop, accumulate=accumulate)
 
 
 def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval, retrain):
@@ -327,7 +402,6 @@ def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval, r
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file=save_file, model_func=model, interval=interval, epochs=10, loss='ce',
         soft=False, conf_q=0.0, num_runs=5, num_repeats=None, retrain=retrain)
-
 
 
 def rotated_mnist_60_conv_experiment():
@@ -352,6 +426,14 @@ def gaussian_linear_experiment():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5)
+
+
+def cov_mlp_experiment():
+    run_experiment(
+        dataset_func=datasets.cov_data_func, n_classes=2, input_shape=(54,),
+        save_file='saved_files/covtype2.dat',
+        model_func=models.mlp_softmax_model, interval=50000, epochs=5, loss='ce',
         soft=False, conf_q=0.1, num_runs=5)
 
 
@@ -491,24 +573,36 @@ if __name__ == "__main__":
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.9998)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.999)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.998)
-        # learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.95_True/results.dat')
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.9998_True/results.dat')
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.998_True/results.dat')
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.999_True/results.dat')
 
-    # # Main paper experiments.
-    # portraits_conv_experiment()
-    # print("Portraits conv experiment")
-    # experiment_results('saved_files/portraits.dat')
-    # rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment")
-    # experiment_results('saved_files/rot_mnist_60_conv.dat')
-    # gaussian_linear_experiment()
-    # print("Gaussian linear experiment")
-    # experiment_results('saved_files/gaussian.dat')
-    # print("Dialing MNIST ratios conv experiment")
-    # dialing_ratios_mnist_experiment()
-    # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
+    elif args.experiment_name == "learn_gradual_accum_windowed":
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=False)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=True)
+
+    elif args.experiment_name == "learn_gradual_group":
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
+
+    elif args.experiment_name == "gradual_shift_main":
+        # Main paper experiments.
+        # cov_mlp_experiment()
+        print("Cov type MLP experiment")
+        experiment_results('saved_files/covtype2.dat')
+        # portraits_conv_experiment()
+        # print("Portraits conv experiment")
+        # experiment_results('saved_files/portraits.dat')
+        # rotated_mnist_60_conv_experiment()
+        # print("Rot MNIST conv experiment")
+        # experiment_results('saved_files/rot_mnist_60_conv.dat')
+        # gaussian_linear_experiment()
+        # print("Gaussian linear experiment")
+        # experiment_results('saved_files/gaussian.dat')
+        # print("Dialing MNIST ratios conv experiment")
+        # dialing_ratios_mnist_experiment()
+        # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
 
     # # Without confidence thresholding.
     # portraits_conv_experiment_noconf()

@@ -8,8 +8,11 @@ import scipy.io
 from scipy import ndimage
 # from scipy.stats import ortho_group
 import sklearn.preprocessing
+import pandas
 import pickle
 import gradual_st.utils as utils
+import gradual_st.models as models
+
 
 Dataset = collections.namedtuple('Dataset',
     'get_data n_src_train n_src_valid n_target_unsup n_target_val n_target_test target_end '
@@ -436,9 +439,27 @@ def load_portraits_data(load_file='dataset_32x32.mat'):
     return data['Xs'], data['Ys'][0]
 
 
-def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
-                        load_file='dataset_32x32.mat'):
-    xs, ys = load_portraits_data(load_file)
+def load_covtype_data(load_file):
+    df = pandas.read_csv(load_file, header=None)
+    data = df.to_numpy()
+    xs = data[:, :54]
+    xs = (xs - np.mean(xs, axis=0)) / np.std(xs, axis=0)
+    ys = data[:, 54] - 1
+
+    # Keep the first 2 types of crops, these comprise majority of the dataset.
+    keep = (ys <= 1)
+    xs = xs[keep]
+    ys = ys[keep]
+
+    # Sort by (horizontal) distance to water body.
+    dist_to_water = xs[:, 3]
+    indices = np.argsort(dist_to_water, axis=0)
+    xs = xs[indices]
+    ys = ys[indices]
+    return xs, ys
+
+
+def make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst, xs, ys):
     src_end = n_src_tr + n_src_val
     inter_end = src_end + n_inter
     trg_end = inter_end + n_trg_val + n_trg_tst
@@ -452,6 +473,22 @@ def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val,
     dir_inter_x, dir_inter_y = inter_x[-n_target_unsup:], inter_y[-n_target_unsup:]
     return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y,
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+
+
+def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
+                        load_file='dataset_32x32.mat'):
+    xs, ys = load_portraits_data(load_file)
+    return make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst, xs, ys)
+
+
+def make_cov_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
+                  load_file="data/covtype.data"):
+    xs, ys = load_covtype_data(load_file)
+    return make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst, xs, ys)
+
+
+def cov_data_func():
+    return make_cov_data(40000, 10000, 400000, 50000, 25000, 20000)
 
 
 def rotated_mnist_60_data_func():

@@ -26,13 +26,14 @@ def linear_softmax_model(num_labels, input_shape, l2_reg=0.02):
     return linear_model
 
 
-def mlp_softmax_model(num_labels, input_shape, l2_reg=0.02):
+def mlp_softmax_model(num_labels, input_shape, l2_reg=0.0, dropout=0.5):
     linear_model = keras.models.Sequential([
     keras.layers.Flatten(input_shape=input_shape),
     keras.layers.Dense(32, activation=tf.nn.relu,
-        kernel_regularizer=regularizers.l2(0.0)),
+        kernel_regularizer=regularizers.l2(l2_reg)),
     keras.layers.Dense(32, activation=tf.nn.relu,
-        kernel_regularizer=regularizers.l2(0.0)),
+        kernel_regularizer=regularizers.l2(l2_reg)),
+    keras.layers.Dropout(dropout),
     keras.layers.BatchNormalization(),
     keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out',
         kernel_regularizer=regularizers.l2(l2_reg))
