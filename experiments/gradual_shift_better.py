@@ -68,7 +68,7 @@ def run_experiment(
         trg_eval_y = trg_val_y
         # Train source model.
         source_model = new_model()
-        source_model.fit(src_tr_x[:10000], src_tr_y[:10000], epochs=epochs, verbose=True)
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
         _, src_acc = source_model.evaluate(src_val_x, src_val_y)
         _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
         # Gradual self-training.
@@ -80,11 +80,11 @@ def run_experiment(
             epochs=epochs, soft=soft, confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         print("final gradual acc: ", acc)
-        # pooled_student = new_model()
-        # pooled_student.set_weights(source_model.get_weights())
-        # pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
-        # _, pooled_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
-        # print("pooled acc: ", pooled_acc)
+        pooled_student = new_model()
+        pooled_student.set_weights(source_model.get_weights())
+        pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
+        _, pooled_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
+        print("pooled acc: ", pooled_acc)
         assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
         gradual_accuracies.append(acc)
         # Train to target.
@@ -95,12 +95,11 @@ def run_experiment(
             student_func, teacher, dir_inter_x, epochs=epochs, target_x=trg_eval_x,
             target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         print("\n\n Direct boostrap to all unsup data:")
-        all_accuracies = []
-        # teacher = new_model()
-        # teacher.set_weights(source_model.get_weights())
-        # all_accuracies, _ = utils.self_train(
-        #     student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-        #     target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        all_accuracies, _ = utils.self_train(
+            student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
+            target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
     results = []
     for i in range(num_runs):
@@ -297,14 +296,9 @@ def experiment_results(save_name):
         target_accs.append(100 * target_acc)
         final_graduals.append(100 * gradual_accuracies[-1])
         final_targets.append(100 * target_accuracies[-1])
-        # final_alls.append(100 * all_accuracies[-1])
+        final_alls.append(100 * all_accuracies[-1])
         best_targets.append(100 * np.max(target_accuracies))
-        # best_alls.append(100 * np.max(all_accuracies))
-    target_accs = np.array(target_accs)
-    final_targets = np.array(final_targets)
-    final_graduals = np.array(final_graduals) - final_targets
-    # final_alls = np.array(final_alls) - target_accs
-    final_targets = np.array(final_targets) - target_accs
+        best_alls.append(100 * np.max(all_accuracies))
     num_runs = len(src_accs)
     mult = 1.645  # For 90% confidence intervals
     print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
@@ -315,12 +309,12 @@ def experiment_results(save_name):
           mult * np.std(final_graduals) / np.sqrt(num_runs))
     print("Target self-train accuracy (%): ", np.mean(final_targets),
           mult * np.std(final_targets) / np.sqrt(num_runs))
-    # print("All self-train accuracy (%): ", np.mean(final_alls),
-    #       mult * np.std(final_alls) / np.sqrt(num_runs))
+    print("All self-train accuracy (%): ", np.mean(final_alls),
+          mult * np.std(final_alls) / np.sqrt(num_runs))
     print("Best of Target self-train accuracies (%): ", np.mean(best_targets),
           mult * np.std(best_targets) / np.sqrt(num_runs))
-    # print("Best of All self-train accuracies (%): ", np.mean(best_alls),
-    #       mult * np.std(best_alls) / np.sqrt(num_runs))
+    print("Best of All self-train accuracies (%): ", np.mean(best_alls),
+          mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
 def learn_gradual_experiment_results(save_name):
