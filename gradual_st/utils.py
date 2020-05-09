@@ -203,11 +203,15 @@ def get_mean_group_confidences(confidences, num_groups):
     return mean_confidences
 
 
-def get_most_confident_group_indices(group_confidences, num_groups_to_add):
+def get_most_confident_group_indices(group_confidences, num_groups_to_add, avoid_groups_set):
     assert num_groups_to_add > 0
+    group_confidences = np.array(group_confidences)
     num_groups_to_add = min(num_groups_to_add, len(group_confidences))
+    assert(np.min(group_confidences) >= 0.0)
+    group_confidences[list(avoid_groups_set)] = -1.0
     indices = np.argsort(group_confidences)
     selected_groups = indices[-num_groups_to_add:]
+    assert(len(avoid_groups_set.intersection(set(list(selected_groups)))) == 0)
     return selected_groups
 
 
@@ -253,7 +257,7 @@ def print_stats(stats):
         all_acc * 100, cur_acc * 100, student_teacher_disagreement * 100, pseudo_loss * 100))
 
 
-def save_stats(save_folder, seed, stats_list):
+def save_stats(save_folder, seed, stats_list, accumulate):
     print("Save function to be implemented.")
 
 
@@ -264,33 +268,52 @@ def get_quantiles(values, num_groups):
 
 
 def self_train_learn_gradual_group(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug_y, num_groups,
-                                   num_new_groups, save_folder, seed, epochs=20):
+                                   num_new_groups, save_folder, seed, epochs=20, accumulate=True,
+                                   confidence_scorer=None):
     assert num_new_groups < num_groups
     num_iters = safe_ceil_divide(num_groups, num_new_groups)
     stats_list = []
+    used_groups = set()
+    accumulated_xs = []
+    accumulated_pseudos = []
+    if confidence_scorer is not None:
+            confidences = confidence_scorer.predict(unsup_x)[:, 0]
     for i in range(num_iters):
         student = student_func(teacher)
         logits = teacher.predict(unsup_x)
-        confidences = np.amax(logits, axis=1)
+        if confidence_scorer is None:
+            confidences = np.amax(logits, axis=1)
         teacher_preds = np.argmax(logits, axis=1)
         mean_group_confidences = get_mean_group_confidences(confidences, num_groups)
         confidence_ranks_by_time = get_confidence_ranks_by_time(mean_group_confidences)
-        plot_confidence_ranks_by_time(confidence_ranks_by_time)
-        selected_groups = get_most_confident_group_indices(mean_group_confidences,
-                                                           (i+1) * num_new_groups)
+        # plot_confidence_ranks_by_time(confidence_ranks_by_time)
+        if accumulate:
+            selected_groups = get_most_confident_group_indices(
+                mean_group_confidences, (i+1) * num_new_groups, avoid_groups_set=used_groups)
+        else:
+            selected_groups = get_most_confident_group_indices(
+                mean_group_confidences, num_new_groups, avoid_groups_set=used_groups)
+            print(selected_groups)
         interquartiles = get_quantiles(selected_groups, num_groups)
         print("Quantiles of selected groups: ", interquartiles)
         selected_indices = get_selected_indices(len(unsup_x), num_groups, selected_groups)
         # Self-training only uses unlabeled intermediate data and pseudolabels.
         self_train_from_pseudolabels(student, src_tr_x, src_tr_y, unsup_x, teacher_preds,
                                      selected_indices, epochs)
+        if not accumulate:
+            used_groups.update(selected_groups)
+            accumulated_xs.append(unsup_x[selected_indices])
+            accumulated_pseudos.append(teacher_preds[selected_indices])
         # Get statistics that we can output and save to a file.
         stats = get_stats(student, unsup_x, teacher_preds, debug_y, selected_indices)
         print_stats(stats)
         stats_list.append(stats)
         teacher = student
-    save_stats(save_folder, seed, stats_list)
-    return stats, student
+    save_stats(save_folder, seed, stats_list, accumulate)
+    if not accumulate:
+        accumulated_xs = np.concatenate(accumulated_xs)
+        accumulated_pseudos = np.concatenate(accumulated_pseudos)
+    return stats, student, accumulated_xs, accumulated_pseudos
 
 
 def save_plot(save_name, values, x_label, y_label):

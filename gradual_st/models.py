@@ -61,7 +61,7 @@ def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
     ])
 
 
-def deeper_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0):
+def deeper_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0, dropout=0.5):
     return keras.models.Sequential([
     keras.layers.Conv2D(hidden_nodes, (5,5), (1, 1), activation=tf.nn.relu,
                            padding='same', input_shape=input_shape),
@@ -71,7 +71,7 @@ def deeper_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1)
                            padding='same'),
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,
                            padding='same'),
-    keras.layers.Dropout(0.5),
+    keras.layers.Dropout(dropout),
     keras.layers.BatchNormalization(),
     keras.layers.Flatten(name='after_flatten'),
     # keras.layers.Dense(64, activation=tf.nn.relu),

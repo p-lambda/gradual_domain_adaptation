@@ -11,6 +11,7 @@ import pickle
 from sklearn.neighbors import KNeighborsClassifier
 from tensorflow.keras.layers import Input, Dense, Flatten
 from tensorflow.keras.models import Model
+import matplotlib.pyplot as plt
 
 
 def compile_model(model, loss='ce'):
@@ -142,6 +143,42 @@ def rotated_mnist_60_conv_oracle_all_experiment():
         model_func=models.simple_softmax_conv_model, epochs=10, loss='ce')
 
 
+def portraits_source_target_experiment(
+    dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
+    model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce'):
+    # Train a discriminator to classify between source and target.
+    # Is this better able to identify the timestamps?
+    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
+        trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+    def new_model():
+        model = model_func(2, input_shape=input_shape)
+        compile_model(model, loss)
+        return model
+    # Try using confidence instead.
+    source_model = new_model()
+    source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=True)
+    inter_preds = source_model.predict(inter_x)[:,0]
+    ranks = utils.get_confidence_ranks_by_time(inter_preds)
+    rolled_ranks = utils.rolling_average(ranks, 100)
+    plt.clf()
+    plt.plot(np.arange(len(rolled_ranks)), rolled_ranks)
+    plt.show()
+    # Make discrimination dataset.
+    xs = np.concatenate([src_tr_x, trg_val_x])
+    ys = np.concatenate([np.zeros(len(src_tr_x)), np.ones(len(src_tr_x))])
+    source_target_model = new_model()
+    source_target_model.fit(xs, ys, epochs=epochs, verbose=True)
+    source_preds = source_target_model.predict(src_val_x)[:,0]
+    print(np.mean(source_preds))
+    target_preds = source_target_model.predict(trg_test_x)[:,0]
+    print(np.mean(target_preds))
+    inter_preds = source_target_model.predict(inter_x)[:,0]
+    rolled_preds = utils.rolling_average(inter_preds, 100)
+    plt.clf()
+    plt.plot(np.arange(len(rolled_preds)), rolled_preds)
+    plt.show()
+
+
 # def rotated_mnist_60_conv_nn_experiment():
 #     nearest_neighbor_selective_classification(
 #         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
@@ -150,5 +187,6 @@ def rotated_mnist_60_conv_oracle_all_experiment():
 
 
 if __name__ == "__main__":
-    rotated_mnist_60_conv_nn_experiment()
+    portraits_source_target_experiment()
+    # rotated_mnist_60_conv_nn_experiment()
     # Another test to see how oracle does on representations.

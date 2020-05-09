@@ -139,7 +139,7 @@ def windowed_vs_accumulate_experiment(
         source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
         _, src_acc = source_model.evaluate(src_val_x, src_val_y)
         _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
-        # Gradual self-training.
+        # Windowed.
         print("\n\n Gradual self-training:")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
@@ -156,7 +156,7 @@ def windowed_vs_accumulate_experiment(
         print("pooled final acc: ", pooled_final_acc)
         print("pooled all acc: ", pooled_all_acc)
         assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
-        # Train to target.
+        # Accumulation.
         print("\n\n Accumulating gradual self-training")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
@@ -265,16 +265,43 @@ def learn_gradual_grouped_experiment(
         source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
         _, src_acc = source_model.evaluate(src_val_x, src_val_y)
         _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
-        # Learn gradual structure
+        # Learn source-target discriminator.
+        xs = np.concatenate([src_tr_x, trg_val_x])
+        ys = np.concatenate([np.zeros(len(src_tr_x)), np.ones(len(src_tr_x))])
+        source_target_model = new_model()
+        source_target_model.fit(xs, ys, epochs=epochs, verbose=True)
+        # Learn gradual structure windowed
         print("\n\n Learn gradual structure")
         teacher = new_model()
         teacher.set_weights(source_model.get_weights())
-        stats, student = utils.self_train_learn_gradual_group(
+        stats, student, acc_xs, acc_pseudos = utils.self_train_learn_gradual_group(
+            student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_groups=num_groups,
+            num_new_groups=num_new_groups, save_folder=save_folder, seed=seed, epochs=epochs,
+            accumulate=False, confidence_scorer=source_target_model)
+        assert(acc_xs.shape[0] == acc_pseudos.shape[0])
+        assert(inter_x.shape[0] == acc_xs.shape[0])
+        print('inter shape', inter_x.shape[0])
+        print('accum_x shape', acc_xs.shape[0])
+        pooled_student = new_model()
+        pooled_student.set_weights(source_model.get_weights())
+        pooled_student.fit(acc_xs, acc_pseudos, epochs=epochs)
+        _, pooled_all_acc = pooled_student.evaluate(inter_x, inter_y)
+        _, pooled_final_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
+        print("pooled all acc: ", pooled_all_acc)
+        print("pooled final acc: ", pooled_final_acc)
+        # Learn gradual structure accumulated
+        print("\n\n Learn gradual structure")
+        teacher = new_model()
+        teacher.set_weights(source_model.get_weights())
+        stats, student, acc_xs, acc_ys = utils.self_train_learn_gradual_group(
             student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, num_groups=num_groups,
             num_new_groups=num_new_groups, save_folder=save_folder, seed=seed, epochs=epochs)
-        _, all_acc = student.evaluate(inter_x, inter_y)
-        _, final_acc = student.evaluate(trg_eval_x, trg_eval_y)
-        return all_acc, final_acc
+        assert(acc_xs == [] and acc_ys == [])
+        _, accum_all_acc = student.evaluate(inter_x, inter_y)
+        _, accum_final_acc = student.evaluate(trg_eval_x, trg_eval_y)
+        print("pooled all acc: ", accum_all_acc)
+        print("pooled final acc: ", accum_final_acc)
+        return pooled_all_acc, pooled_final_acc, accum_all_acc, accum_final_acc
     results = []
     for i in range(num_runs):
         results.append(run(i))
@@ -337,7 +364,7 @@ def windowed_vs_accum_experiment_results(save_name):
     print(results)
     gradual_accs, pooled_final_accs, pooled_all_accs, accumulated_final_accs, accumulated_all_accs = [], [], [], [], []
     for gradual_acc, pooled_final_acc, pooled_all_acc, accumulated_final_acc, accumulated_all_acc in results:
-        gradual_accs.append(gradual_accs)
+        gradual_accs.append(gradual_acc)
         pooled_final_accs.append(pooled_final_acc)
         pooled_all_accs.append(pooled_all_acc)
         accumulated_final_accs.append(accumulated_final_acc)
@@ -364,6 +391,17 @@ def rotated_mnist_60_conv_learn_groups_experiment(dropout, num_groups, num_new_g
     learn_gradual_grouped_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_folder=save_folder, model_func=model, num_new_groups=num_new_groups, epochs=10, loss='ce',
+        num_runs=5, num_groups=num_groups, retrain=False)
+
+
+def portraits_conv_learn_groups_experiment(dropout, num_groups, num_new_groups, retrain=False):
+    def model(n_classes, input_shape):
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
+    save_folder=('saved_files/portraits_conv_learn_groups_' + str(dropout) + '_' +
+                 str(num_groups) + '_' + str(num_new_groups) + '_' + str(retrain))
+    learn_gradual_grouped_experiment(
+        dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
+        save_folder=save_folder, model_func=model, num_new_groups=num_new_groups, epochs=20, loss='ce',
         num_runs=5, num_groups=num_groups, retrain=False)
 
 
@@ -395,6 +433,28 @@ def rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout, interval, r
     windowed_vs_accumulate_experiment(
         dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
         save_file=save_file, model_func=model, interval=interval, epochs=10, loss='ce',
+        soft=False, conf_q=0.0, num_runs=5, num_repeats=None, retrain=retrain)
+
+
+def portraits_conv_windowed_vs_accumulate_experiment(dropout, interval, retrain):
+    def model(n_classes, input_shape):
+        return models.simple_softmax_conv_model(n_classes, input_shape=input_shape, dropout=dropout)
+    save_file = ('saved_files/portraits_conv_windowed_vs_accumulate_' + str(dropout) + '_' +
+                 str(interval) + '_' + str(retrain) + '.dat')
+    windowed_vs_accumulate_experiment(
+        dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
+        save_file=save_file, model_func=model, interval=interval, epochs=20, loss='ce',
+        soft=False, conf_q=0.0, num_runs=5, num_repeats=None, retrain=retrain)
+
+
+def cov_mlp_windowed_vs_accumulate_experiment(dropout, interval, retrain):
+    def model(n_classes, input_shape):
+        return models.mlp_softmax_model(n_classes, input_shape=input_shape, dropout=dropout)
+    save_file = ('saved_files/cov_mlp_windowed_vs_accumulate_' + str(dropout) + '_' +
+                 str(interval) + '_' + str(retrain) + '.dat')
+    windowed_vs_accumulate_experiment(
+        dataset_func=datasets.cov_data_func, n_classes=2, input_shape=(54,),
+        save_file=save_file, model_func=model, interval=interval, epochs=5, loss='ce',
         soft=False, conf_q=0.0, num_runs=5, num_repeats=None, retrain=retrain)
 
 
@@ -554,13 +614,19 @@ if __name__ == "__main__":
 
     # Compare windowed and accumulated approach.
     elif args.experiment_name == "windowed_vs_accumulate":
-        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=True)
-        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
-        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
-        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000, retrain=False)
-        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
-        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
-        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
+        cov_mlp_windowed_vs_accumulate_experiment(dropout=0.5, interval=50000, retrain=False)
+        windowed_vs_accum_experiment_results('saved_files/cov_mlp_windowed_vs_accumulate_0.8_2000_False.dat')
+        # portraits_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
+        # portraits_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
+        # windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.5_2000_False.dat')
+        # windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.8_2000_False.dat')
+        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=True)
+        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
+        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
+        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000, retrain=False)
+        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
+        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
+        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
     elif args.experiment_name == "no_overtrain":
         # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.95)
@@ -576,9 +642,10 @@ if __name__ == "__main__":
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=True)
 
     elif args.experiment_name == "learn_gradual_group":
-        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
-        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
-        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
+        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
+        portraits_conv_learn_groups_experiment(dropout=0.8, num_groups=140, num_new_groups=20, retrain=False)
+        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
+        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
 
     elif args.experiment_name == "gradual_shift_main":
         # Main paper experiments.
