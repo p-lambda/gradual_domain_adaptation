@@ -44,7 +44,8 @@ def student_func_gen(model_func, retrain, loss):
 
 def run_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
-    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None):
+    interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None,
+    run_all_self_train=True):
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     if soft:
@@ -80,11 +81,6 @@ def run_experiment(
             epochs=epochs, soft=soft, confidence_q=conf_q)
         _, acc = student.evaluate(trg_eval_x, trg_eval_y)
         print("final gradual acc: ", acc)
-        pooled_student = new_model()
-        pooled_student.set_weights(source_model.get_weights())
-        pooled_student.fit(inter_x, unsup_pseudolabels, epochs=epochs)
-        _, pooled_acc = pooled_student.evaluate(trg_eval_x, trg_eval_y)
-        print("pooled acc: ", pooled_acc)
         assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
         gradual_accuracies.append(acc)
         # Train to target.
@@ -94,12 +90,15 @@ def run_experiment(
         target_accuracies, _ = utils.self_train(
             student_func, teacher, dir_inter_x, epochs=epochs, target_x=trg_eval_x,
             target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
-        print("\n\n Direct boostrap to all unsup data:")
-        teacher = new_model()
-        teacher.set_weights(source_model.get_weights())
-        all_accuracies, _ = utils.self_train(
-            student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
-            target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
+        if run_all_self_train:
+            print("\n\n Direct boostrap to all unsup data:")
+            teacher = new_model()
+            teacher.set_weights(source_model.get_weights())
+            all_accuracies, _ = utils.self_train(
+                student_func, teacher, inter_x, epochs=epochs, target_x=trg_eval_x,
+                target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
+        else:
+            all_accuracies = []
         return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
     results = []
     for i in range(num_runs):
@@ -267,7 +266,7 @@ def learn_gradual_grouped_experiment(
         _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
         # Learn source-target discriminator.
         xs = np.concatenate([src_tr_x, trg_val_x])
-        ys = np.concatenate([np.zeros(len(src_tr_x)), np.ones(len(src_tr_x))])
+        ys = np.concatenate([np.zeros(len(src_tr_x)), np.ones(len(trg_val_x))])
         source_target_model = new_model()
         source_target_model.fit(xs, ys, epochs=epochs, verbose=True)
         # Learn gradual structure windowed
@@ -323,9 +322,11 @@ def experiment_results(save_name):
         target_accs.append(100 * target_acc)
         final_graduals.append(100 * gradual_accuracies[-1])
         final_targets.append(100 * target_accuracies[-1])
-        final_alls.append(100 * all_accuracies[-1])
+        if len(all_accuracies) > 0:
+            final_alls.append(100 * all_accuracies[-1])
         best_targets.append(100 * np.max(target_accuracies))
-        best_alls.append(100 * np.max(all_accuracies))
+        if len(all_accuracies) > 0:
+            best_alls.append(100 * np.max(all_accuracies))
     num_runs = len(src_accs)
     mult = 1.645  # For 90% confidence intervals
     print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
@@ -336,12 +337,14 @@ def experiment_results(save_name):
           mult * np.std(final_graduals) / np.sqrt(num_runs))
     print("Target self-train accuracy (%): ", np.mean(final_targets),
           mult * np.std(final_targets) / np.sqrt(num_runs))
-    print("All self-train accuracy (%): ", np.mean(final_alls),
-          mult * np.std(final_alls) / np.sqrt(num_runs))
+    if len(final_alls) > 0:
+        print("All self-train accuracy (%): ", np.mean(final_alls),
+              mult * np.std(final_alls) / np.sqrt(num_runs))
     print("Best of Target self-train accuracies (%): ", np.mean(best_targets),
           mult * np.std(best_targets) / np.sqrt(num_runs))
-    print("Best of All self-train accuracies (%): ", np.mean(best_alls),
-          mult * np.std(best_alls) / np.sqrt(num_runs))
+    if len(best_alls) > 0:
+        print("Best of All self-train accuracies (%): ", np.mean(best_alls),
+              mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
 def learn_gradual_experiment_results(save_name):
@@ -483,6 +486,14 @@ def gaussian_linear_experiment():
         soft=False, conf_q=0.1, num_runs=5)
 
 
+def cov_mlp_experiment_no_all_self_train():
+    run_experiment(
+        dataset_func=datasets.cov_data_func, n_classes=2, input_shape=(54,),
+        save_file='saved_files/covtype_no_all_self_train.dat',
+        model_func=models.mlp_softmax_model, interval=50000, epochs=5, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5, run_all_self_train=False)
+
+
 def cov_mlp_experiment():
     run_experiment(
         dataset_func=datasets.cov_data_func, n_classes=2, input_shape=(54,),
@@ -616,20 +627,20 @@ if __name__ == "__main__":
     elif args.experiment_name == "windowed_vs_accumulate":
         cov_mlp_windowed_vs_accumulate_experiment(dropout=0.5, interval=50000, retrain=False)
         windowed_vs_accum_experiment_results('saved_files/cov_mlp_windowed_vs_accumulate_0.8_2000_False.dat')
-        # portraits_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
-        # portraits_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
-        # windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.5_2000_False.dat')
-        # windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.8_2000_False.dat')
-        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=True)
-        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
-        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
-        # rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000, retrain=False)
-        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
-        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
-        # windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
+        portraits_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
+        portraits_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
+        windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.5_2000_False.dat')
+        windowed_vs_accum_experiment_results('saved_files/portraits_conv_windowed_vs_accumulate_0.8_2000_False.dat')
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=True)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.8, interval=2000, retrain=False)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
+        rotated_mnist_60_conv_windowed_vs_accumulate_experiment(dropout=0.9, interval=2000, retrain=False)
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.5_2000.dat')
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
+        windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
     elif args.experiment_name == "no_overtrain":
-        # rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.95)
+        rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.95)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.9998)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.999)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.998)
@@ -642,63 +653,68 @@ if __name__ == "__main__":
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=True)
 
     elif args.experiment_name == "learn_gradual_group":
-        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
         portraits_conv_learn_groups_experiment(dropout=0.8, num_groups=140, num_new_groups=20, retrain=False)
-        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
-        # rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
+        learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.999_True/results.dat')
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
+        rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
 
     elif args.experiment_name == "gradual_shift_main":
         # Main paper experiments.
-        # cov_mlp_experiment()
+        cov_mlp_experiment_no_all_self_train()
+        print("Cov type no all self train")
+        experiment_results('saved_files/covtype_no_all_self_train.dat')
+        cov_mlp_experiment()
         print("Cov type MLP experiment")
         experiment_results('saved_files/covtype2.dat')
-        # portraits_conv_experiment()
-        # print("Portraits conv experiment")
-        # experiment_results('saved_files/portraits.dat')
-        # rotated_mnist_60_conv_experiment()
-        # print("Rot MNIST conv experiment")
-        # experiment_results('saved_files/rot_mnist_60_conv.dat')
-        # gaussian_linear_experiment()
-        # print("Gaussian linear experiment")
-        # experiment_results('saved_files/gaussian.dat')
-        # print("Dialing MNIST ratios conv experiment")
-        # dialing_ratios_mnist_experiment()
-        # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
+        portraits_conv_experiment()
+        print("Portraits conv experiment")
+        experiment_results('saved_files/portraits.dat')
+        rotated_mnist_60_conv_experiment()
+        print("Rot MNIST conv experiment")
+        experiment_results('saved_files/rot_mnist_60_conv.dat')
+        gaussian_linear_experiment()
+        print("Gaussian linear experiment")
+        experiment_results('saved_files/gaussian.dat')
+        print("Dialing MNIST ratios conv experiment")
+        dialing_ratios_mnist_experiment()
+        experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
 
-    # # Without confidence thresholding.
-    # portraits_conv_experiment_noconf()
-    # print("Portraits conv experiment no confidence thresholding")
-    # experiment_results('saved_files/portraits_noconf.dat')
-    # rotated_mnist_60_conv_experiment_noconf()
-    # print("Rot MNIST conv experiment no confidence thresholding")
-    # experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
-    # gaussian_linear_experiment_noconf()
-    # print("Gaussian linear experiment no confidence thresholding")
-    # experiment_results('saved_files/gaussian_noconf.dat')
+    elif args.experiment_name == 'ablations':
+        # Without confidence thresholding.
+        portraits_conv_experiment_noconf()
+        print("Portraits conv experiment no confidence thresholding")
+        experiment_results('saved_files/portraits_noconf.dat')
+        rotated_mnist_60_conv_experiment_noconf()
+        print("Rot MNIST conv experiment no confidence thresholding")
+        experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
+        gaussian_linear_experiment_noconf()
+        print("Gaussian linear experiment no confidence thresholding")
+        experiment_results('saved_files/gaussian_noconf.dat')
 
-    # # Try predicting for next set of data points on portraits.
-    # portraits_conv_experiment_more()
-    # print("Portraits next datapoints conv experiment")
-    # experiment_results('saved_files/portraits_more.dat')
+        # Try predicting for next set of data points on portraits.
+        portraits_conv_experiment_more()
+        print("Portraits next datapoints conv experiment")
+        experiment_results('saved_files/portraits_more.dat')
 
-    # # Try smaller window sizes.
-    # portraits_conv_experiment_smaller_interval()
-    # print("Portraits conv experiment smaller window")
-    # experiment_results('saved_files/portraits_smaller_interval.dat')
-    # rotated_mnist_60_conv_experiment_smaller_interval()
-    # print("Rot MNIST conv experiment smaller window")
-    # experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat')
-    # gaussian_linear_experiment_smaller_interval()
-    # print("Gaussian linear experiment smaller window")
-    # experiment_results('saved_files/gaussian_smaller_interval.dat')
+        # Try smaller window sizes.
+        portraits_conv_experiment_smaller_interval()
+        print("Portraits conv experiment smaller window")
+        experiment_results('saved_files/portraits_smaller_interval.dat')
+        rotated_mnist_60_conv_experiment_smaller_interval()
+        print("Rot MNIST conv experiment smaller window")
+        experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat')
+        gaussian_linear_experiment_smaller_interval()
+        print("Gaussian linear experiment smaller window")
+        experiment_results('saved_files/gaussian_smaller_interval.dat')
 
-    # # Try training more epochs.
-    # portraits_conv_experiment_more_epochs()
-    # print("Portraits conv experiment train longer")
-    # experiment_results('saved_files/portraits_more_epochs.dat')
-    # rotated_mnist_60_conv_experiment_more_epochs()
-    # print("Rot MNIST conv experiment train longer")
-    # experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat')
-    # gaussian_linear_experiment_more_epochs()
-    # print("Gaussian linear experiment train longer")
-    # experiment_results('saved_files/gaussian_more_epochs.dat')
+        # Try training more epochs.
+        portraits_conv_experiment_more_epochs()
+        print("Portraits conv experiment train longer")
+        experiment_results('saved_files/portraits_more_epochs.dat')
+        rotated_mnist_60_conv_experiment_more_epochs()
+        print("Rot MNIST conv experiment train longer")
+        experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat')
+        gaussian_linear_experiment_more_epochs()
+        print("Gaussian linear experiment train longer")
+        experiment_results('saved_files/gaussian_more_epochs.dat')
