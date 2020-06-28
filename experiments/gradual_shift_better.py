@@ -507,6 +507,14 @@ def cov_small_mlp_experiment():
         dataset_func=datasets.cov_data_small_func, n_classes=2, input_shape=(54,),
         save_file='saved_files/covtype_small.dat',
         model_func=models.mlp_softmax_model, interval=50000, epochs=5, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5)
+
+
+def cov_small_mlp_experiment_no_all_self_train():
+    run_experiment(
+        dataset_func=datasets.cov_data_small_func, n_classes=2, input_shape=(54,),
+        save_file='saved_files/covtype_small_no_all_self_train.dat',
+        model_func=models.mlp_softmax_model, interval=50000, epochs=5, loss='ce',
         soft=False, conf_q=0.1, num_runs=5, run_all_self_train=False)
 
 
@@ -672,12 +680,15 @@ if __name__ == "__main__":
         cov_small_mlp_experiment()
         print("Cov type small source.")
         experiment_results('saved_files/covtype_small.dat')
+        # cov_small_mlp_experiment_no_all_self_train()
+        # print("Cov type small source no all self-train.")
+        # experiment_results('saved_files/covtype_small_no_all_self_train.dat')
         # cov_mlp_experiment_no_all_self_train()
         # print("Cov type no all self train")
         # experiment_results('saved_files/covtype_no_all_self_train.dat')
         # cov_mlp_experiment()
         # print("Cov type MLP experiment")
-        # experiment_results('saved_files/covtype2.dat')
+        experiment_results('saved_files/covtype2.dat')
         portraits_conv_experiment()
         print("Portraits conv experiment")
         experiment_results('saved_files/portraits.dat')
