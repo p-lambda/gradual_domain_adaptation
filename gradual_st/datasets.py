@@ -439,11 +439,12 @@ def load_portraits_data(load_file='dataset_32x32.mat'):
     return data['Xs'], data['Ys'][0]
 
 
-def load_covtype_data(load_file):
+def load_covtype_data(load_file, normalize=True):
     df = pandas.read_csv(load_file, header=None)
     data = df.to_numpy()
     xs = data[:, :54]
-    xs = (xs - np.mean(xs, axis=0)) / np.std(xs, axis=0)
+    if normalize:
+        xs = (xs - np.mean(xs, axis=0)) / np.std(xs, axis=0)
     ys = data[:, 54] - 1
 
     # Keep the first 2 types of crops, these comprise majority of the dataset.
@@ -482,13 +483,19 @@ def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val,
 
 
 def make_cov_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
-                  load_file="data/covtype.data"):
+                  load_file="data/covtype.data", normalize=True):
     xs, ys = load_covtype_data(load_file)
     return make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst, xs, ys)
 
 
 def cov_data_func():
     return make_cov_data(40000, 10000, 400000, 50000, 25000, 20000)
+
+def cov_data_small_func():
+    return make_cov_data(10000, 40000, 400000, 50000, 25000, 20000)
+
+def cov_data_func_no_normalize():
+    return make_cov_data(40000, 10000, 400000, 50000, 25000, 20000, normalize=False)
 
 
 def rotated_mnist_60_data_func():

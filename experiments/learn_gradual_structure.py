@@ -151,5 +151,5 @@ def rotated_mnist_60_conv_oracle_all_experiment():
 
 
 if __name__ == "__main__":
-    # rotated_mnist_60_conv_nn_experiment()
+    rotated_mnist_60_conv_nn_experiment()
     # Another test to see how oracle does on representations.
