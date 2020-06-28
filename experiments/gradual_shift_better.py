@@ -688,7 +688,7 @@ if __name__ == "__main__":
         # experiment_results('saved_files/covtype_no_all_self_train.dat')
         # cov_mlp_experiment()
         # print("Cov type MLP experiment")
-        experiment_results('saved_files/covtype2.dat')
+        # experiment_results('saved_files/covtype2.dat')
         portraits_conv_experiment()
         print("Portraits conv experiment")
         experiment_results('saved_files/portraits.dat')

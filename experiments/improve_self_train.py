@@ -49,10 +49,14 @@ def make_training_data(xs, ys):
     datagen = ImageDataGenerator(
         featurewise_center=True,
         featurewise_std_normalization=True,
-        rotation_range=20,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        horizontal_flip=True)
+        # samplewise_center=True,
+        # samplewise_std_normalization=True,
+        # rescale=900.0,  # Can use this with sample centering.
+        # rotation_range=20,
+        # width_shift_range=0.2,
+        # height_shift_range=0.2,
+        # horizontal_flip=True
+    )
     datagen.fit(xs)
     return datagen.flow(xs, ys)
 
@@ -60,7 +64,11 @@ def make_training_data(xs, ys):
 def make_test_data(xs, ys):
     datagen = ImageDataGenerator(
         featurewise_center=True,
-        featurewise_std_normalization=True)
+        featurewise_std_normalization=True,
+        # samplewise_center=True,
+        # samplewise_std_normalization=True,
+        # rescale=900.0,  # Can use this with sample centering.
+    )
     datagen.fit(xs)
     return datagen.flow(xs, ys)
 
