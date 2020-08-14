@@ -6,7 +6,7 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.datasets import cifar10
 import scipy.io
 from scipy import ndimage
-# from scipy.stats import ortho_group
+from scipy.stats import ortho_group
 import sklearn.preprocessing
 import pandas
 import pickle
@@ -529,6 +529,3 @@ def gaussian_data_func(d):
         d=d, min_var=0.05, max_var=0.1,
         source_alphas=[0.0, 0.0], inter_alphas=[0.0, 1.0], target_alphas=[1.0, 1.0],
         n_src_tr=500, n_src_val=1000, n_inter=5000, n_trg_val=1000, n_trg_tst=1000)
-
-
-

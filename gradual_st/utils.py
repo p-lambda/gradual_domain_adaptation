@@ -43,7 +43,6 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
 
 def gradual_self_train(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug_y, interval,
                        confidence_q=0.1, epochs=20, soft=False, accumulate=False):
-    assert(not soft)
     upper_idx = int(unsup_x.shape[0] / interval)
     accuracies = []
     unsup_pseudolabels = []

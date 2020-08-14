@@ -12,7 +12,7 @@ import pickle
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--experiment_name', default='windowed_vs_accumulate', type=str,
+parser.add_argument('--experiment_name', default='gradual_shift_main', type=str,
                     help='Name of experiment to run.')
 
 
@@ -45,16 +45,22 @@ def student_func_gen(model_func, retrain, loss):
 def run_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None,
-    run_all_self_train=True):
-    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
-        trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
-    if soft:
-        src_tr_y = to_categorical(src_tr_y)
-        src_val_y = to_categorical(src_val_y)
-        trg_eval_y = to_categorical(trg_eval_y)
-        dir_inter_y = to_categorical(dir_inter_y)
-        inter_y = to_categorical(inter_y)
-        trg_test_y = to_categorical(trg_test_y)
+    run_all_self_train=True, reload_data_each_run=False):
+    def get_data():
+        (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
+            trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
+        if soft:
+            src_tr_y = to_categorical(src_tr_y)
+            src_val_y = to_categorical(src_val_y)
+            trg_eval_y = to_categorical(trg_eval_y)
+            dir_inter_y = to_categorical(dir_inter_y)
+            inter_y = to_categorical(inter_y)
+            trg_test_y = to_categorical(trg_test_y)
+        return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x,
+                dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+    (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x,
+        dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y) = get_data()
+    # if needed, we will reload this for each run in the for loop below.
     if num_repeats is None:
         num_repeats = int(inter_x.shape[0] / interval)
     def new_model():
@@ -103,6 +109,9 @@ def run_experiment(
     results = []
     for i in range(num_runs):
         results.append(run(i))
+        if reload_data_each_run:
+            (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x,
+                dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y) = get_data()
     print('Saving to ' + save_file)
     pickle.dump(results, open(save_file, "wb"))
 
@@ -347,6 +356,53 @@ def experiment_results(save_name):
               mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
+def experiment_results_improvements(save_name):
+    results = pickle.load(open(save_name, "rb"))
+    src_accs, target_accs = [], []
+    final_graduals, final_targets, final_alls = [], [], []
+    best_targets, best_alls = [], []
+    for src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies in results:
+        src_accs.append(100 * src_acc)
+        target_accs.append(100 * target_acc)
+        final_graduals.append(100 * gradual_accuracies[-1])
+        final_targets.append(100 * target_accuracies[-1])
+        if len(all_accuracies) > 0:
+            final_alls.append(100 * all_accuracies[-1])
+        best_targets.append(100 * np.max(target_accuracies))
+        if len(all_accuracies) > 0:
+            best_alls.append(100 * np.max(all_accuracies))
+    num_runs = len(src_accs)
+    mult = 1.645  # For 90% confidence intervals
+    target_accs = np.array(target_accs)
+    final_graduals = np.array(final_graduals)
+    final_targets = np.array(final_targets)
+    final_alls = np.array(final_alls)
+    best_targets = np.array(best_targets)
+    best_alls = np.array(best_alls)
+    final_graduals = final_graduals - target_accs
+    final_targets = final_targets - target_accs
+    final_alls = final_alls - target_accs
+    best_targets = best_targets - target_accs
+    best_alls = best_alls - target_accs
+    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
+          mult * np.std(src_accs) / np.sqrt(num_runs))
+    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
+          mult * np.std(target_accs) / np.sqrt(num_runs))
+    print("Gradual self-train accuracy (%): +", np.mean(final_graduals),
+          mult * np.std(final_graduals) / np.sqrt(num_runs))
+    print("Target self-train accuracy (%): +", np.mean(final_targets),
+          mult * np.std(final_targets) / np.sqrt(num_runs))
+    if len(final_alls) > 0:
+        print("All self-train accuracy (%): +", np.mean(final_alls),
+              mult * np.std(final_alls) / np.sqrt(num_runs))
+    print("Best of Target self-train accuracies (%): +", np.mean(best_targets),
+          mult * np.std(best_targets) / np.sqrt(num_runs))
+    if len(best_alls) > 0:
+        print("Best of All self-train accuracies (%): +", np.mean(best_alls),
+              mult * np.std(best_alls) / np.sqrt(num_runs))
+
+
+
 def learn_gradual_experiment_results(save_name):
     results = pickle.load(open(save_name, "rb"))
     print(results)
@@ -483,7 +539,7 @@ def gaussian_linear_experiment():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
-        soft=False, conf_q=0.1, num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5, reload_data_each_run=True)
 
 
 def cov_mlp_experiment_no_all_self_train():
@@ -542,7 +598,7 @@ def gaussian_linear_experiment_noconf():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian_noconf.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=100, loss='ce',
-        soft=False, conf_q=0.0, num_runs=5)
+        soft=False, conf_q=0.0, num_runs=5, reload_data_each_run=True)
 
 
 def portraits_64_conv_experiment():
@@ -592,7 +648,7 @@ def gaussian_linear_experiment_smaller_interval():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian_smaller_interval.dat',
         model_func=models.linear_softmax_model, interval=250, epochs=100, loss='ce',
-        soft=False, conf_q=0.1, num_runs=5, num_repeats=7)
+        soft=False, conf_q=0.1, num_runs=5, num_repeats=7, reload_data_each_run=True)
 
 
 
@@ -618,7 +674,7 @@ def gaussian_linear_experiment_more_epochs():
         dataset_func=lambda: datasets.gaussian_data_func(d), n_classes=2, input_shape=(d,),
         save_file='saved_files/gaussian_more_epochs.dat',
         model_func=models.linear_softmax_model, interval=500, epochs=150, loss='ce',
-        soft=False, conf_q=0.1, num_runs=5)
+        soft=False, conf_q=0.1, num_runs=5, reload_data_each_run=True)
 
 
 if __name__ == "__main__":
@@ -677,9 +733,26 @@ if __name__ == "__main__":
 
     elif args.experiment_name == "gradual_shift_main":
         # Main paper experiments.
-        cov_small_mlp_experiment()
-        print("Cov type small source.")
-        experiment_results('saved_files/covtype_small.dat')
+        # print("Cov type small source.")
+        # cov_small_mlp_experiment()
+        # # experiment_results('saved_files/covtype_small.dat')
+        # experiment_results_improvements('saved_files/covtype_small.dat')
+        # print("Portraits conv experiment")
+        # # portraits_conv_experiment()
+        # # experiment_results('saved_files/portraits.dat')
+        # experiment_results_improvements('saved_files/portraits.dat')
+        # print("Rot MNIST conv experiment")
+        # # rotated_mnist_60_conv_experiment()
+        # # experiment_results('saved_files/rot_mnist_60_conv.dat')
+        # experiment_results_improvements('saved_files/rot_mnist_60_conv.dat')
+        print("Gaussian linear experiment")
+        gaussian_linear_experiment()
+        # experiment_results('saved_files/gaussian.dat')
+        experiment_results_improvements('saved_files/gaussian.dat')
+        # print("Dialing MNIST ratios conv experiment")
+        # dialing_ratios_mnist_experiment()
+        # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
+        # experiment_results_improvements('saved_files/dialing_rot_mnist_60_conv.dat')
         # cov_small_mlp_experiment_no_all_self_train()
         # print("Cov type small source no all self-train.")
         # experiment_results('saved_files/covtype_small_no_all_self_train.dat')
@@ -689,18 +762,6 @@ if __name__ == "__main__":
         # cov_mlp_experiment()
         # print("Cov type MLP experiment")
         # experiment_results('saved_files/covtype2.dat')
-        portraits_conv_experiment()
-        print("Portraits conv experiment")
-        experiment_results('saved_files/portraits.dat')
-        rotated_mnist_60_conv_experiment()
-        print("Rot MNIST conv experiment")
-        experiment_results('saved_files/rot_mnist_60_conv.dat')
-        gaussian_linear_experiment()
-        print("Gaussian linear experiment")
-        experiment_results('saved_files/gaussian.dat')
-        print("Dialing MNIST ratios conv experiment")
-        dialing_ratios_mnist_experiment()
-        experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
 
     elif args.experiment_name == 'ablations':
         # Without confidence thresholding.

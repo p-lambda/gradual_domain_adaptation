@@ -41,6 +41,19 @@ def mlp_softmax_model(num_labels, input_shape, l2_reg=0.0, dropout=0.5):
     return linear_model
 
 
+def unregularized_mlp_softmax_model(num_labels, input_shape, l2_reg=0.0, dropout=0.5):
+    linear_model = keras.models.Sequential([
+    keras.layers.Flatten(input_shape=input_shape),
+    keras.layers.Dense(32, activation=tf.nn.relu,
+        kernel_regularizer=regularizers.l2(l2_reg)),
+    keras.layers.Dense(32, activation=tf.nn.relu,
+        kernel_regularizer=regularizers.l2(l2_reg)),
+    keras.layers.Dense(num_labels, activation=tf.nn.softmax, name='out',
+        kernel_regularizer=regularizers.l2(l2_reg))
+    ])
+    return linear_model
+
+
 def simple_softmax_conv_model(num_labels, hidden_nodes=32, input_shape=(28,28,1), l2_reg=0.0, dropout=0.5):
     return keras.models.Sequential([
     keras.layers.Conv2D(hidden_nodes, (5,5), (2, 2), activation=tf.nn.relu,

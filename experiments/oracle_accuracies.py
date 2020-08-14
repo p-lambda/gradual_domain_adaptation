@@ -27,10 +27,13 @@ def run_experiment(
         utils.rand_seed(seed)
         trg_eval_x = trg_val_x
         trg_eval_y = trg_val_y
-        model = new_model()
-        model.fit(inter_x[-interval:], inter_y[-interval:], epochs=epochs, verbose=True)
-        _, target_acc = model.evaluate(trg_eval_x, trg_eval_y)
-        return target_acc
+        source_model = new_model()
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        oracle_model = new_model()
+        oracle_model.fit(inter_x[-interval:], inter_y[-interval:], epochs=epochs, verbose=False)
+        _, oracle_acc = oracle_model.evaluate(trg_eval_x, trg_eval_y)
+        return target_acc, oracle_acc
     results = []
     for i in range(num_runs):
         results.append(run(i))
@@ -40,6 +43,19 @@ def run_experiment(
     pickle.dump(results, open(save_file, "wb"))
 
 
+def experiment_results(save_name):
+    results = pickle.load(open(save_name, "rb"))
+    target_accs = 100 * np.array(results)[:, 0]
+    oracle_accs = 100 * np.array(results)[:, 1]
+    oracle_accs_extra = oracle_accs - target_accs
+    num_runs = len(target_accs)
+    mult = 1.645  # For 90% confidence intervals
+    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
+          mult * np.std(target_accs) / np.sqrt(num_runs))
+    print("Oracle accuracy (%): +", np.mean(oracle_accs_extra),
+          mult * np.std(oracle_accs_extra) / np.sqrt(num_runs))
+
+
 def portraits_conv_oracle_experiment():
     run_experiment(
         dataset_func=datasets.portraits_data_func, n_classes=2, input_shape=(32, 32, 1),
@@ -47,6 +63,31 @@ def portraits_conv_oracle_experiment():
         model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
         num_runs=5)
 
+
+def cov_small_mlp_experiment():
+    run_experiment(
+        dataset_func=datasets.cov_data_small_func, n_classes=2, input_shape=(54,),
+        save_file='saved_files/oracle_covtype_small.dat',
+        model_func=models.mlp_softmax_model, interval=50000, epochs=5, loss='ce',
+        num_runs=5)
+
+
+def rotated_mnist_60_conv_experiment():
+    run_experiment(
+        dataset_func=datasets.rotated_mnist_60_data_func, n_classes=10, input_shape=(28, 28, 1),
+        save_file='saved_files/oracle_rot_mnist_60_conv.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=10, loss='ce',
+        num_runs=5)
+
+
 if __name__ == "__main__":
-    portraits_conv_oracle_experiment()
+    print("Cov Type")
+    # cov_small_mlp_experiment()
+    experiment_results('saved_files/oracle_covtype_small.dat')
+    print("Rotating MNIST")
+    # rotated_mnist_60_conv_experiment()
+    experiment_results('saved_files/oracle_rot_mnist_60_conv.dat')
+    print("Portraits")
+    # portraits_conv_oracle_experiment()
+    experiment_results('saved_files/oracle_portraits.dat')
 
