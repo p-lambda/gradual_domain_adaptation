@@ -10,6 +10,7 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 import pickle
 import os
+import json
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment_name', default='gradual_shift_main', type=str,
@@ -356,8 +357,8 @@ def experiment_results(save_name):
               mult * np.std(best_alls) / np.sqrt(num_runs))
 
 
-def experiment_results_improvements(save_name):
-    results = pickle.load(open(save_name, "rb"))
+def experiment_results_improvements(load_name, save_json_name):
+    results = pickle.load(open(load_name, "rb"))
     src_accs, target_accs = [], []
     final_graduals, final_targets, final_alls = [], [], []
     best_targets, best_alls = [], []
@@ -372,7 +373,7 @@ def experiment_results_improvements(save_name):
         if len(all_accuracies) > 0:
             best_alls.append(100 * np.max(all_accuracies))
     num_runs = len(src_accs)
-    mult = 1.645  # For 90% confidence intervals
+    mult = 1.645 / np.sqrt(num_runs)  # For 90% confidence intervals
     target_accs = np.array(target_accs)
     final_graduals = np.array(final_graduals)
     final_targets = np.array(final_targets)
@@ -384,22 +385,58 @@ def experiment_results_improvements(save_name):
     final_alls = final_alls - target_accs
     best_targets = best_targets - target_accs
     best_alls = best_alls - target_accs
+    # Populate the json.
+    acc_dict = {}
+    acc_dict['no_adapt_on_src'] = {
+        'mean': np.mean(src_accs),
+        'std': mult * np.std(src_accs)
+    }
+    acc_dict['no_adapt_on_trg'] = {
+        'mean': np.mean(target_accs),
+        'std': mult * np.std(target_accs)
+    }
+    acc_dict['grad_self_train'] = {
+        'mean': np.mean(final_graduals),
+        'std': mult * np.std(final_graduals)
+    }
+    acc_dict['trg_self_train'] = {
+        'mean': np.mean(final_targets),
+        'std': mult * np.std(final_targets)
+    }
+    acc_dict['trg_self_train_best'] = {
+        'mean': np.mean(best_targets),
+        'std': mult * np.std(best_targets)
+    }
+    if len(final_alls) > 0:
+        acc_dict['all_self_train'] = {
+            'mean': np.mean(final_alls),
+            'std': mult * np.std(final_alls)
+        }
+        assert len(best_alls) > 0
+        acc_dict['all_self_train_best'] = {
+            'mean': np.mean(best_alls),
+            'std': mult * np.std(best_alls)
+        }
+    # Write json
+    with open(save_json_name, 'w') as outfile:
+        json.dump(acc_dict, outfile)
+    # Print out the results.
     print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
-          mult * np.std(src_accs) / np.sqrt(num_runs))
+          mult * np.std(src_accs))
     print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
-          mult * np.std(target_accs) / np.sqrt(num_runs))
+          mult * np.std(target_accs))
     print("Gradual self-train accuracy (%): +", np.mean(final_graduals),
-          mult * np.std(final_graduals) / np.sqrt(num_runs))
+          mult * np.std(final_graduals))
     print("Target self-train accuracy (%): +", np.mean(final_targets),
-          mult * np.std(final_targets) / np.sqrt(num_runs))
+          mult * np.std(final_targets))
     if len(final_alls) > 0:
         print("All self-train accuracy (%): +", np.mean(final_alls),
-              mult * np.std(final_alls) / np.sqrt(num_runs))
+              mult * np.std(final_alls))
     print("Best of Target self-train accuracies (%): +", np.mean(best_targets),
-          mult * np.std(best_targets) / np.sqrt(num_runs))
+          mult * np.std(best_targets))
     if len(best_alls) > 0:
         print("Best of All self-train accuracies (%): +", np.mean(best_alls),
-              mult * np.std(best_alls) / np.sqrt(num_runs))
+              mult * np.std(best_alls))
 
 
 
@@ -736,19 +773,23 @@ if __name__ == "__main__":
         # print("Cov type small source.")
         # cov_small_mlp_experiment()
         # # experiment_results('saved_files/covtype_small.dat')
-        # experiment_results_improvements('saved_files/covtype_small.dat')
+        experiment_results_improvements(
+            'saved_files/covtype_small.dat', 'saved_files/covtype_small.json')
         # print("Portraits conv experiment")
         # # portraits_conv_experiment()
         # # experiment_results('saved_files/portraits.dat')
-        # experiment_results_improvements('saved_files/portraits.dat')
+        experiment_results_improvements(
+            'saved_files/portraits.dat', 'saved_files/portraits.json')
         # print("Rot MNIST conv experiment")
         # # rotated_mnist_60_conv_experiment()
         # # experiment_results('saved_files/rot_mnist_60_conv.dat')
-        # experiment_results_improvements('saved_files/rot_mnist_60_conv.dat')
+        experiment_results_improvements(
+            'saved_files/rot_mnist_60_conv.dat', 'saved_files/rot_mnist_60_conv.json')
         print("Gaussian linear experiment")
-        gaussian_linear_experiment()
+        # gaussian_linear_experiment()
         # experiment_results('saved_files/gaussian.dat')
-        experiment_results_improvements('saved_files/gaussian.dat')
+        experiment_results_improvements(
+            'saved_files/gaussian.dat', 'saved_files/gaussian.json')
         # print("Dialing MNIST ratios conv experiment")
         # dialing_ratios_mnist_experiment()
         # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
