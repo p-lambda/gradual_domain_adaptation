@@ -449,8 +449,10 @@ def load_covtype_data(load_file, normalize=True):
 
     # Keep the first 2 types of crops, these comprise majority of the dataset.
     keep = (ys <= 1)
+    print(len(xs))
     xs = xs[keep]
     ys = ys[keep]
+    print(len(xs))
 
     # Sort by (horizontal) distance to water body.
     dist_to_water = xs[:, 3]

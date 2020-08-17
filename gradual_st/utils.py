@@ -1,4 +1,5 @@
 
+import tensorflow
 import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
@@ -6,7 +7,26 @@ import matplotlib.pyplot as plt
 
 def rand_seed(seed):
     np.random.seed(seed)
-    tf.compat.v1.set_random_seed(seed)
+    tf.set_random_seed(seed)
+
+
+def populate_dict(name_values_list, mult):
+    # mult denotes how much to multiply the std error by.
+    # Note: Don't divide mult by sqrt(num_runs), we do that in this function.
+    dict = {}
+    for name, values in name_values_list:
+        if len(values) > 0:
+            dict[name] = {
+                'mean': np.mean(values),
+                'std': mult / np.sqrt(len(values)) * np.std(values)
+            }
+    return dict
+
+
+def print_dict(dict):
+    for name in dict:
+        print('{} accuracy (%): {:.2f} +- {:.2f}'.format(
+            name, dict[name]['mean'], dict[name]['std']))
 
 
 def self_train_once(student, teacher, unsup_x, confidence_q=0.1, epochs=20):
@@ -35,7 +55,7 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
         else:
             self_train_once(student, teacher, unsup_x, confidence_q, epochs)
         if target_x is not None and target_y is not None:
-            _, accuracy = student.evaluate(target_x, target_y, verbose=True)
+            _, accuracy = student.evaluate(target_x, target_y, verbose=False)
             accuracies.append(accuracy)
         teacher = student
     return accuracies, student
@@ -61,7 +81,7 @@ def gradual_self_train(student_func, teacher, src_tr_x, src_tr_y, unsup_x, debug
             soft_self_train_once(student, teacher, cur_xs, epochs)
         else:
             self_train_once(student, teacher, cur_xs, confidence_q, epochs)
-        _, accuracy = student.evaluate(cur_xs, cur_ys)
+        _, accuracy = student.evaluate(cur_xs, cur_ys, verbose=False)
         accuracies.append(accuracy)
         teacher_logits = teacher.predict(cur_xs)
         teacher_preds = np.argmax(teacher_logits, axis=1)

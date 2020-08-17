@@ -84,6 +84,7 @@ def rotated_mnist_regularization_experiment(
     unreg_model_func, reg_model_func, loss, save_name_base, N=2000, delta_angle=3, num_angles=21,
     retrain=False, num_runs=20):
     # Get data.
+    utils.rand_seed(0)
     (train_x, train_y), _ = datasets.get_preprocessed_mnist()
     orig_x, orig_y = train_x[:N], train_y[:N]
     inter_x, inter_y = datasets.make_population_rotated_dataset(
@@ -105,6 +106,7 @@ def rotated_mnist_regularization_experiment(
 def finite_data_experiment(
     dataset_func, n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
     interval=2000, epochs=10, loss='ce', retrain=False, soft=False, num_runs=20):
+    utils.rand_seed(0)
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     reg_vs_unreg_experiment(

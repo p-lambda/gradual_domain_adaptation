@@ -46,7 +46,7 @@ def student_func_gen(model_func, retrain, loss):
 def run_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', soft=False, conf_q=0.1, num_runs=20, num_repeats=None,
-    run_all_self_train=True, reload_data_each_run=False):
+    run_all_self_train=True, reload_data_each_run=False, verbose=False):
     def get_data():
         (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
             trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
@@ -59,6 +59,7 @@ def run_experiment(
             trg_test_y = to_categorical(trg_test_y)
         return (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x,
                 dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
+    utils.rand_seed(0)
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x,
         dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y) = get_data()
     # if needed, we will reload this for each run in the for loop below.
@@ -76,9 +77,18 @@ def run_experiment(
         trg_eval_y = trg_val_y
         # Train source model.
         source_model = new_model()
-        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
-        _, src_acc = source_model.evaluate(src_val_x, src_val_y)
-        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=verbose)
+        _, src_acc = source_model.evaluate(src_val_x, src_val_y, verbose=verbose)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y, verbose=verbose)
+        print("\n\n Source model:")
+        print("accuracy on source: ", src_acc)
+        print("accuracy on target: ", target_acc)
+        # Train oracle target accuracy.
+        oracle_model = new_model()
+        oracle_model.fit(inter_x[-interval:], inter_y[-interval:], epochs=epochs, verbose=verbose)
+        _, oracle_acc = oracle_model.evaluate(trg_eval_x, trg_eval_y, verbose=verbose)
+        print("\n\n Oracle model:")
+        print("accuracy on target: ", oracle_acc)
         # Gradual self-training.
         print("\n\n Gradual self-training:")
         teacher = new_model()
@@ -86,7 +96,7 @@ def run_experiment(
         gradual_accuracies, student, unsup_pseudolabels = utils.gradual_self_train(
             student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, interval,
             epochs=epochs, soft=soft, confidence_q=conf_q)
-        _, acc = student.evaluate(trg_eval_x, trg_eval_y)
+        _, acc = student.evaluate(trg_eval_x, trg_eval_y, verbose=verbose)
         print("final gradual acc: ", acc)
         assert(inter_x.shape[0] == unsup_pseudolabels.shape[0])
         gradual_accuracies.append(acc)
@@ -106,7 +116,7 @@ def run_experiment(
                 target_y=trg_eval_y, repeats=num_repeats, soft=soft, confidence_q=conf_q)
         else:
             all_accuracies = []
-        return src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies
+        return src_acc, target_acc, oracle_acc, gradual_accuracies, target_accuracies, all_accuracies
     results = []
     for i in range(num_runs):
         results.append(run(i))
@@ -322,14 +332,18 @@ def learn_gradual_grouped_experiment(
     return save_file
 
 
-def experiment_results(save_name):
-    results = pickle.load(open(save_name, "rb"))
-    src_accs, target_accs = [], []
+
+
+
+def get_summary_stats(load_name):
+    results = pickle.load(open(load_name, "rb"))
+    src_accs, target_accs, oracle_accs = [], [], []
     final_graduals, final_targets, final_alls = [], [], []
     best_targets, best_alls = [], []
-    for src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies in results:
+    for src_acc, target_acc, oracle_acc, gradual_accuracies, target_accuracies, all_accuracies in results:
         src_accs.append(100 * src_acc)
         target_accs.append(100 * target_acc)
+        oracle_accs.append(100 * oracle_acc)
         final_graduals.append(100 * gradual_accuracies[-1])
         final_targets.append(100 * target_accuracies[-1])
         if len(all_accuracies) > 0:
@@ -337,43 +351,34 @@ def experiment_results(save_name):
         best_targets.append(100 * np.max(target_accuracies))
         if len(all_accuracies) > 0:
             best_alls.append(100 * np.max(all_accuracies))
-    num_runs = len(src_accs)
+    return (src_accs, target_accs, oracle_accs, final_graduals, final_targets, final_alls,
+            best_targets, best_alls)
+
+
+def experiment_results(load_name, save_json_name):
+    (src_accs, target_accs, oracle_accs, final_graduals, final_targets, final_alls,
+        best_targets, best_alls) = get_summary_stats(load_name)
     mult = 1.645  # For 90% confidence intervals
-    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
-          mult * np.std(src_accs) / np.sqrt(num_runs))
-    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
-          mult * np.std(target_accs) / np.sqrt(num_runs))
-    print("Gradual self-train accuracy (%): ", np.mean(final_graduals),
-          mult * np.std(final_graduals) / np.sqrt(num_runs))
-    print("Target self-train accuracy (%): ", np.mean(final_targets),
-          mult * np.std(final_targets) / np.sqrt(num_runs))
-    if len(final_alls) > 0:
-        print("All self-train accuracy (%): ", np.mean(final_alls),
-              mult * np.std(final_alls) / np.sqrt(num_runs))
-    print("Best of Target self-train accuracies (%): ", np.mean(best_targets),
-          mult * np.std(best_targets) / np.sqrt(num_runs))
-    if len(best_alls) > 0:
-        print("Best of All self-train accuracies (%): ", np.mean(best_alls),
-              mult * np.std(best_alls) / np.sqrt(num_runs))
+    results_dict = utils.populate_dict([
+        ('no_adapt_on_src', src_accs),
+        ('no_adapt_on_trg', target_accs),
+        ('oracle_on_trg', oracle_accs),
+        ('grad_self_train', final_graduals),
+        ('trg_self_train', final_targets),
+        ('all_self_train', final_alls),
+        ('best_trg_self_train', best_targets),
+        ('best_all_self_train', best_alls),
+    ], mult=mult)
+    utils.print_dict(results_dict)
+    # Write json
+    with open(save_json_name, 'w') as outfile:
+        json.dump(results_dict, outfile)
 
 
 def experiment_results_improvements(load_name, save_json_name):
-    results = pickle.load(open(load_name, "rb"))
-    src_accs, target_accs = [], []
-    final_graduals, final_targets, final_alls = [], [], []
-    best_targets, best_alls = [], []
-    for src_acc, target_acc, gradual_accuracies, target_accuracies, all_accuracies in results:
-        src_accs.append(100 * src_acc)
-        target_accs.append(100 * target_acc)
-        final_graduals.append(100 * gradual_accuracies[-1])
-        final_targets.append(100 * target_accuracies[-1])
-        if len(all_accuracies) > 0:
-            final_alls.append(100 * all_accuracies[-1])
-        best_targets.append(100 * np.max(target_accuracies))
-        if len(all_accuracies) > 0:
-            best_alls.append(100 * np.max(all_accuracies))
-    num_runs = len(src_accs)
-    mult = 1.645 / np.sqrt(num_runs)  # For 90% confidence intervals
+    (src_accs, target_accs, oracle_accs, final_graduals, final_targets, final_alls,
+        best_targets, best_alls) = get_summary_stats(load_name)
+    mult = 1.645  # For 90% confidence intervals
     target_accs = np.array(target_accs)
     final_graduals = np.array(final_graduals)
     final_targets = np.array(final_targets)
@@ -386,58 +391,20 @@ def experiment_results_improvements(load_name, save_json_name):
     best_targets = best_targets - target_accs
     best_alls = best_alls - target_accs
     # Populate the json.
-    acc_dict = {}
-    acc_dict['no_adapt_on_src'] = {
-        'mean': np.mean(src_accs),
-        'std': mult * np.std(src_accs)
-    }
-    acc_dict['no_adapt_on_trg'] = {
-        'mean': np.mean(target_accs),
-        'std': mult * np.std(target_accs)
-    }
-    acc_dict['grad_self_train'] = {
-        'mean': np.mean(final_graduals),
-        'std': mult * np.std(final_graduals)
-    }
-    acc_dict['trg_self_train'] = {
-        'mean': np.mean(final_targets),
-        'std': mult * np.std(final_targets)
-    }
-    acc_dict['trg_self_train_best'] = {
-        'mean': np.mean(best_targets),
-        'std': mult * np.std(best_targets)
-    }
-    if len(final_alls) > 0:
-        acc_dict['all_self_train'] = {
-            'mean': np.mean(final_alls),
-            'std': mult * np.std(final_alls)
-        }
-        assert len(best_alls) > 0
-        acc_dict['all_self_train_best'] = {
-            'mean': np.mean(best_alls),
-            'std': mult * np.std(best_alls)
-        }
+    results_dict = utils.populate_dict([
+        ('no_adapt_on_src', src_accs),
+        ('no_adapt_on_trg', target_accs),
+        ('oracle_on_trg_imprv', oracle_accs),
+        ('grad_self_train_imprv', final_graduals),
+        ('trg_self_train_imprv', final_targets),
+        ('all_self_train_imprv', final_alls),
+        ('best_trg_self_train_imprv', best_targets),
+        ('best_all_self_train_imprv', best_alls),
+    ], mult=mult)
+    utils.print_dict(results_dict)
     # Write json
     with open(save_json_name, 'w') as outfile:
-        json.dump(acc_dict, outfile)
-    # Print out the results.
-    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
-          mult * np.std(src_accs))
-    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
-          mult * np.std(target_accs))
-    print("Gradual self-train accuracy (%): +", np.mean(final_graduals),
-          mult * np.std(final_graduals))
-    print("Target self-train accuracy (%): +", np.mean(final_targets),
-          mult * np.std(final_targets))
-    if len(final_alls) > 0:
-        print("All self-train accuracy (%): +", np.mean(final_alls),
-              mult * np.std(final_alls))
-    print("Best of Target self-train accuracies (%): +", np.mean(best_targets),
-          mult * np.std(best_targets))
-    if len(best_alls) > 0:
-        print("Best of All self-train accuracies (%): +", np.mean(best_alls),
-              mult * np.std(best_alls))
-
+        json.dump(results_dict, outfile)
 
 
 def learn_gradual_experiment_results(save_name):
@@ -716,6 +683,52 @@ def gaussian_linear_experiment_more_epochs():
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    if not os.path.exists('./saved_files'):
+        os.mkdir('./saved_files')
+
+    # Main experiments for gradual self-training paper.
+
+    if args.experiment_name == "cov_type_main" or args.experiment_name == "gradual_shift_main":
+        print("Cov type small source.")
+        cov_small_mlp_experiment()
+        experiment_results(
+            'saved_files/covtype_small.dat', 'saved_files/covtype_small.json')
+        experiment_results_improvements(
+            'saved_files/covtype_small.dat', 'saved_files/covtype_small_imprv.json')
+
+    if args.experiment_name == "portraits_main" or args.experiment_name == "gradual_shift_main":
+        print("Portraits conv experiment")
+        portraits_conv_experiment()
+        experiment_results(
+            'saved_files/portraits.dat', 'saved_files/portraits.json')
+        experiment_results_improvements(
+            'saved_files/portraits.dat', 'saved_files/portraits_imprv.json')
+
+    if args.experiment_name == "rotating_mnist_main" or args.experiment_name == "gradual_shift_main":
+        print("Rot MNIST conv experiment")
+        rotated_mnist_60_conv_experiment()
+        experiment_results(
+            'saved_files/rot_mnist_60_conv.dat', 'saved_files/rot_mnist_60_conv.json')
+        experiment_results_improvements(
+            'saved_files/rot_mnist_60_conv.dat', 'saved_files/rot_mnist_60_conv_imprv.json')
+
+    if args.experiment_name == "gaussian_main" or args.experiment_name == "gradual_shift_main":
+        print("Gaussian linear experiment")
+        gaussian_linear_experiment()
+        experiment_results(
+            'saved_files/gaussian.dat', 'saved_files/gaussian.json')
+        experiment_results_improvements(
+            'saved_files/gaussian.dat', 'saved_files/gaussian_imprv.json')
+
+    if args.experiment_name == 'dialing_ratios_mnist':
+        print("Dialing MNIST ratios conv experiment")
+        dialing_ratios_mnist_experiment()
+        experiment_results(
+            'saved_files/dialing_rot_mnist_60_conv.dat',
+            'saved_files/dialing_rot_mnist_60_conv.json')
+        experiment_results_improvements(
+            'saved_files/dialing_rot_mnist_60_conv.dat',
+            'saved_files/dialing_rot_mnist_60_conv_imprv.json')
 
     # Learn gradual structure.
     if args.experiment_name == "learn_gradual_sweep":
@@ -733,7 +746,7 @@ if __name__ == "__main__":
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_True/results.dat')
 
     # Compare windowed and accumulated approach.
-    elif args.experiment_name == "windowed_vs_accumulate":
+    if args.experiment_name == "windowed_vs_accumulate":
         cov_mlp_windowed_vs_accumulate_experiment(dropout=0.5, interval=50000, retrain=False)
         windowed_vs_accum_experiment_results('saved_files/cov_mlp_windowed_vs_accumulate_0.8_2000_False.dat')
         portraits_conv_windowed_vs_accumulate_experiment(dropout=0.5, interval=2000, retrain=False)
@@ -748,7 +761,7 @@ if __name__ == "__main__":
         windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.8_2000.dat')
         windowed_vs_accum_experiment_results('saved_files/rot_mnist_60_conv_windowed_vs_accumulate_0.9_2000.dat')
 
-    elif args.experiment_name == "no_overtrain":
+    if args.experiment_name == "no_overtrain":
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.95)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.9998)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, conf_stop=0.999)
@@ -757,88 +770,63 @@ if __name__ == "__main__":
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.998_True/results.dat')
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.999_True/results.dat')
 
-    elif args.experiment_name == "learn_gradual_accum_windowed":
+    if args.experiment_name == "learn_gradual_accum_windowed":
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=False)
         rotated_mnist_60_conv_learn_structure_experiment(dropout=0.8, interval=3000, accumulate=True)
 
-    elif args.experiment_name == "learn_gradual_group":
+    if args.experiment_name == "learn_gradual_group":
         rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=420, num_new_groups=20, retrain=False)
         portraits_conv_learn_groups_experiment(dropout=0.8, num_groups=140, num_new_groups=20, retrain=False)
         learn_gradual_experiment_results('saved_files/rot_mnist_60_conv_learn_structure_0.8_3000_0.999_True/results.dat')
         rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42, num_new_groups=1, retrain=False)
         rotated_mnist_60_conv_learn_groups_experiment(dropout=0.8, num_groups=42000, num_new_groups=2000, retrain=False)
 
-    elif args.experiment_name == "gradual_shift_main":
-        # Main paper experiments.
-        # print("Cov type small source.")
-        # cov_small_mlp_experiment()
-        # # experiment_results('saved_files/covtype_small.dat')
-        experiment_results_improvements(
-            'saved_files/covtype_small.dat', 'saved_files/covtype_small.json')
-        # print("Portraits conv experiment")
-        # # portraits_conv_experiment()
-        # # experiment_results('saved_files/portraits.dat')
-        experiment_results_improvements(
-            'saved_files/portraits.dat', 'saved_files/portraits.json')
-        # print("Rot MNIST conv experiment")
-        # # rotated_mnist_60_conv_experiment()
-        # # experiment_results('saved_files/rot_mnist_60_conv.dat')
-        experiment_results_improvements(
-            'saved_files/rot_mnist_60_conv.dat', 'saved_files/rot_mnist_60_conv.json')
-        print("Gaussian linear experiment")
-        # gaussian_linear_experiment()
-        # experiment_results('saved_files/gaussian.dat')
-        experiment_results_improvements(
-            'saved_files/gaussian.dat', 'saved_files/gaussian.json')
-        # print("Dialing MNIST ratios conv experiment")
-        # dialing_ratios_mnist_experiment()
-        # experiment_results('saved_files/dialing_rot_mnist_60_conv.dat')
-        # experiment_results_improvements('saved_files/dialing_rot_mnist_60_conv.dat')
-        # cov_small_mlp_experiment_no_all_self_train()
-        # print("Cov type small source no all self-train.")
-        # experiment_results('saved_files/covtype_small_no_all_self_train.dat')
-        # cov_mlp_experiment_no_all_self_train()
-        # print("Cov type no all self train")
-        # experiment_results('saved_files/covtype_no_all_self_train.dat')
-        # cov_mlp_experiment()
-        # print("Cov type MLP experiment")
-        # experiment_results('saved_files/covtype2.dat')
 
-    elif args.experiment_name == 'ablations':
+    if args.experiment_name == 'ablations':
         # Without confidence thresholding.
         portraits_conv_experiment_noconf()
         print("Portraits conv experiment no confidence thresholding")
-        experiment_results('saved_files/portraits_noconf.dat')
+        experiment_results('saved_files/portraits_noconf.dat',
+                           'saved_files/portraits_noconf.json')
         rotated_mnist_60_conv_experiment_noconf()
         print("Rot MNIST conv experiment no confidence thresholding")
-        experiment_results('saved_files/rot_mnist_60_conv_noconf.dat')
+        experiment_results('saved_files/rot_mnist_60_conv_noconf.dat',
+                           'saved_files/rot_mnist_60_conv_noconf.json')
         gaussian_linear_experiment_noconf()
         print("Gaussian linear experiment no confidence thresholding")
-        experiment_results('saved_files/gaussian_noconf.dat')
+        experiment_results('saved_files/gaussian_noconf.dat',
+                           'saved_files/gaussian_noconf.json')
 
         # Try predicting for next set of data points on portraits.
         portraits_conv_experiment_more()
         print("Portraits next datapoints conv experiment")
-        experiment_results('saved_files/portraits_more.dat')
+        experiment_results('saved_files/portraits_more.dat',
+                           'saved_files/portraits_more.json')
 
         # Try smaller window sizes.
         portraits_conv_experiment_smaller_interval()
         print("Portraits conv experiment smaller window")
-        experiment_results('saved_files/portraits_smaller_interval.dat')
+        experiment_results('saved_files/portraits_smaller_interval.dat',
+                           'saved_files/portraits_smaller_interval.json')
         rotated_mnist_60_conv_experiment_smaller_interval()
         print("Rot MNIST conv experiment smaller window")
-        experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat')
+        experiment_results('saved_files/rot_mnist_60_conv_smaller_interval.dat',
+                           'saved_files/rot_mnist_60_conv_smaller_interval.json')
         gaussian_linear_experiment_smaller_interval()
         print("Gaussian linear experiment smaller window")
-        experiment_results('saved_files/gaussian_smaller_interval.dat')
+        experiment_results('saved_files/gaussian_smaller_interval.dat',
+                           'saved_files/gaussian_smaller_interval.json')
 
         # Try training more epochs.
         portraits_conv_experiment_more_epochs()
         print("Portraits conv experiment train longer")
-        experiment_results('saved_files/portraits_more_epochs.dat')
+        experiment_results('saved_files/portraits_more_epochs.dat'
+                           'saved_files/portraits_more_epochs.json')
         rotated_mnist_60_conv_experiment_more_epochs()
         print("Rot MNIST conv experiment train longer")
-        experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat')
+        experiment_results('saved_files/rot_mnist_60_conv_more_epochs.dat',
+                           'saved_files/rot_mnist_60_conv_more_epochs.json')
         gaussian_linear_experiment_more_epochs()
         print("Gaussian linear experiment train longer")
-        experiment_results('saved_files/gaussian_more_epochs.dat')
+        experiment_results('saved_files/gaussian_more_epochs.dat',
+                           'saved_files/gaussian_more_epochs.json')

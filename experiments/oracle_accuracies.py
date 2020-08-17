@@ -17,6 +17,7 @@ def compile_model(model, loss='ce'):
 def run_experiment(
     dataset_func, n_classes, input_shape, save_file, model_func=models.simple_softmax_conv_model,
     interval=2000, epochs=10, loss='ce', num_runs=20):
+    utils.rand_seed(0)
     (src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, dir_inter_x, dir_inter_y,
         trg_val_x, trg_val_y, trg_test_x, trg_test_y) = dataset_func()
     def new_model():
@@ -82,12 +83,11 @@ def rotated_mnist_60_conv_experiment():
 
 if __name__ == "__main__":
     print("Cov Type")
-    # cov_small_mlp_experiment()
+    cov_small_mlp_experiment()
     experiment_results('saved_files/oracle_covtype_small.dat')
     print("Rotating MNIST")
-    # rotated_mnist_60_conv_experiment()
+    rotated_mnist_60_conv_experiment()
     experiment_results('saved_files/oracle_rot_mnist_60_conv.dat')
     print("Portraits")
-    # portraits_conv_oracle_experiment()
+    portraits_conv_oracle_experiment()
     experiment_results('saved_files/oracle_portraits.dat')
-
