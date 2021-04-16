@@ -434,6 +434,11 @@ def save_data(data_dir='dataset_32x32', save_file='dataset_32x32.mat', target_si
     scipy.io.savemat('./' + save_file, mdict={'Xs': Xs, 'Ys': Ys})
 
 
+def load_cars_trucks_data(load_file='data/cars-dump-trucks-64.pkl'):
+    xs, ys = pickle.load(open(load_file, "rb"))
+    return xs, ys
+
+
 def load_portraits_data(load_file='dataset_32x32.mat'):
     data = scipy.io.loadmat('./' + load_file)
     return data['Xs'], data['Ys'][0]
@@ -478,6 +483,12 @@ def make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst
             dir_inter_x, dir_inter_y, trg_val_x, trg_val_y, trg_test_x, trg_test_y)
 
 
+def make_cars_trucks_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
+                          load_file='data/cars-dump-trucks-64.pkl'):
+    xs, ys = load_cars_trucks_data(load_file)
+    return make_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst, xs, ys)
+
+
 def make_portraits_data(n_src_tr, n_src_val, n_inter, n_target_unsup, n_trg_val, n_trg_tst,
                         load_file='dataset_32x32.mat'):
     xs, ys = load_portraits_data(load_file)
@@ -512,6 +523,10 @@ def rotated_mnist_60_dialing_ratios_data_func():
     return dial_proportions_rotated_dataset(
         train_x, train_y, test_x, test_y, [0.0, 5.0], [55.0, 60.0],
         5000, 6000, 48000, 50000)
+
+
+def cars_trucks_data_func():
+    return make_cars_trucks_data(1000, 1000, 10000, 2000, 1000, 1000)
 
 
 def portraits_data_func():

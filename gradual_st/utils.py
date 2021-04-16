@@ -56,6 +56,7 @@ def self_train(student_func, teacher, unsup_x, confidence_q=0.1, epochs=20, repe
             self_train_once(student, teacher, unsup_x, confidence_q, epochs)
         if target_x is not None and target_y is not None:
             _, accuracy = student.evaluate(target_x, target_y, verbose=False)
+            print(accuracy)
             accuracies.append(accuracy)
         teacher = student
     return accuracies, student

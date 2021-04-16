@@ -2,11 +2,19 @@
 import gradual_st.utils as utils
 import gradual_st.models as models
 import gradual_st.datasets as datasets
+import argparse
 import tensorflow as tf
 from tensorflow.keras import metrics
 import pickle
 import numpy as np
 from tensorflow.keras.utils import to_categorical
+import json
+import os
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--experiment_name', default='all_reg', type=str,
+                    help='Name of experiment to run.')
 
 
 def compile_model(model, loss='ce'):
@@ -32,7 +40,8 @@ def student_func_gen(model_func, retrain, loss):
 def reg_vs_unreg_experiment(
     src_tr_x, src_tr_y, src_val_x, src_val_y, inter_x, inter_y, trg_eval_x, trg_eval_y,
     n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
-    interval=2000, epochs=10, loss='ce', retrain=False, soft=False, num_runs=20):
+    interval=2000, epochs=10, loss='ce', retrain=False, soft=False, num_runs=20,
+    verbose=False):
     if soft:
         src_tr_y = to_categorical(src_tr_y)
         src_val_y = to_categorical(src_val_y)
@@ -48,8 +57,8 @@ def reg_vs_unreg_experiment(
         source_model = teacher_model()
         print(src_tr_x.shape, src_tr_y.shape)
         source_model.fit(src_tr_x, src_tr_y, epochs=epochs, verbose=False)
-        _, src_acc = source_model.evaluate(src_val_x, src_val_y)
-        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y)
+        _, src_acc = source_model.evaluate(src_val_x, src_val_y, verbose=verbose)
+        _, target_acc = source_model.evaluate(trg_eval_x, trg_eval_y, verbose=verbose)
         # Gradual self-training.
         def gradual_train(regularize):
             teacher = teacher_model()
@@ -63,7 +72,7 @@ def reg_vs_unreg_experiment(
                 retrain=retrain, loss=loss)
             accuracies, student, _ = utils.gradual_self_train(
                 student_func, teacher, src_tr_x, src_tr_y, inter_x, inter_y, interval, epochs=epochs, soft=soft)
-            _, acc = student.evaluate(trg_eval_x, trg_eval_y)
+            _, acc = student.evaluate(trg_eval_x, trg_eval_y, verbose=verbose)
             accuracies.append(acc)
             return accuracies
         # Regularized gradual self-training.
@@ -114,25 +123,29 @@ def finite_data_experiment(
         n_classes, input_shape, save_file, unreg_model_func, reg_model_func,
         interval, epochs, loss, retrain, soft=soft, num_runs=num_runs)
 
-
-def regularization_results(save_name):
-    results = pickle.load(open(save_name, "rb"))
+def get_summary_stats(load_name):
+    results = pickle.load(open(load_name, "rb"))
     src_accs, target_accs, reg_accs, unreg_accs = [], [], [], []
     for src_acc, target_acc, reg_accuracies, unreg_accuracies in results:
         src_accs.append(100 * src_acc)
         target_accs.append(100 * target_acc)
         reg_accs.append(100 * reg_accuracies[-1])
         unreg_accs.append(100 * unreg_accuracies[-1])
-    num_runs = len(src_accs)
+    return src_accs, target_accs, reg_accs, unreg_accs
+
+def regularization_results(load_name, save_json_name):
+    src_accs, target_accs, reg_accs, unreg_accs = get_summary_stats(load_name)
     mult = 1.645  # For 90% confidence intervals
-    print("\nNon-adaptive accuracy on source (%): ", np.mean(src_accs),
-          mult * np.std(src_accs) / np.sqrt(num_runs))
-    print("Non-adaptive accuracy on target (%): ", np.mean(target_accs),
-          mult * np.std(target_accs) / np.sqrt(num_runs))
-    print("Reg accuracy (%): ", np.mean(reg_accs),
-          mult * np.std(reg_accs) / np.sqrt(num_runs))
-    print("Unreg accuracy (%): ", np.mean(unreg_accs),
-          mult * np.std(unreg_accs) / np.sqrt(num_runs))
+    results_dict = utils.populate_dict([
+        ('no_adapt_on_src', src_accs),
+        ('no_adapt_on_trg', target_accs),
+        ('regularized_gradual_st', reg_accs),
+        ('unregularized_gradual_st', unreg_accs),
+    ], mult=mult)
+    utils.print_dict(results_dict)
+    # Write json
+    with open(save_json_name, 'w') as outfile:
+        json.dump(results_dict, outfile)
 
 
 def rotated_mnist_60_conv_experiment():
@@ -253,70 +266,119 @@ def dialing_rotated_mnist_60_conv_experiment():
 
 
 if __name__ == "__main__":
-    # rotated_mnist_regularization_experiment(
-    #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
-    #     save_name_base='saved_files/inf_reg_mnist', N=2000, delta_angle=3, num_angles=20,
-    #     retrain=False, num_runs=5)
-    # print("Rot MNIST experiment 2000 points rotated")
-    # regularization_results('saved_files/inf_reg_mnist_2000_3_20.dat')
+    args = parser.parse_args()
+    if not os.path.exists('./saved_files'):
+        os.mkdir('./saved_files')
 
-    # rotated_mnist_regularization_experiment(
-    #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
-    #     save_name_base='saved_files/inf_reg_mnist', N=5000, delta_angle=3, num_angles=20,
-    #     retrain=False, num_runs=5)
-    # print("Rot MNIST experiment 5000 points rotated")
-    # regularization_results('saved_files/inf_reg_mnist_5000_3_20.dat')
+    if args.experiment_name == "rot_mnist_vary_n":
+        print("Rot MNIST experiment 2k points rotated")
+        rotated_mnist_regularization_experiment(
+            models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
+            save_name_base='saved_files/inf_reg_mnist', N=2000, delta_angle=3, num_angles=20,
+            retrain=False, num_runs=5)
+        regularization_results(
+            'saved_files/inf_reg_mnist_2000_3_20.dat',
+            'saved_files/inf_reg_mnist_2000_3_20.json')    
 
-    # rotated_mnist_regularization_experiment(
-    #     models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
-    #     save_name_base='saved_files/inf_reg_mnist', N=20000, delta_angle=3, num_angles=20,
-    #     retrain=False, num_runs=5)
-    # print("Rot MNIST experiment 20k points rotated")
-    # regularization_results('saved_files/inf_reg_mnist_20000_3_20.dat')
+        print("Rot MNIST experiment 5k points rotated")
+        rotated_mnist_regularization_experiment(
+            models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
+            save_name_base='saved_files/inf_reg_mnist', N=5000, delta_angle=3, num_angles=20,
+            retrain=False, num_runs=5)
+        regularization_results(
+            'saved_files/inf_reg_mnist_5000_3_20.dat',
+            'saved_files/inf_reg_mnist_5000_3_20.json')
+
+        print("Rot MNIST experiment 20k points rotated")
+        rotated_mnist_regularization_experiment(
+            models.unregularized_softmax_conv_model, models.simple_softmax_conv_model, 'ce',
+            save_name_base='saved_files/inf_reg_mnist', N=20000, delta_angle=3, num_angles=20,
+            retrain=False, num_runs=5)
+        regularization_results(
+            'saved_files/inf_reg_mnist_20000_3_20.dat',
+            'saved_files/inf_reg_mnist_20000_3_20.json')
 
     # Run all experiments comparing regularization vs no regularization.
-    # cov_small_mlp_experiment()
-    print("Cover Type experiment reg vs no reg")
-    regularization_results('saved_files/reg_vs_unreg_covtype_small.dat')
-    # portraits_conv_experiment()
-    # print("Portraits conv experiment reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_portraits.dat')
-    # rotated_mnist_60_conv_experiment()
-    # print("Rotating MNIST conv experiment reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_rot_mnist_60_conv.dat')
-    # gaussian_linear_experiment()
-    # print("Gaussian linear experiment reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_gaussian.dat')
+    if args.experiment_name == "cov_reg" or args.experiment_name == "all_reg":
+        print("Cover Type experiment reg vs no reg")
+        cov_small_mlp_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_covtype_small.dat',
+            'saved_files/reg_vs_unreg_covtype_small.json')
+
+    if args.experiment_name == "portraits_reg" or args.experiment_name == "all_reg":
+        print("Portraits conv experiment reg vs no reg")
+        portraits_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_portraits.dat',
+            'saved_files/reg_vs_unreg_portraits.json')
+
+    if args.experiment_name == "rot_mnist_reg" or args.experiment_name == "all_reg":
+        print("Rotating MNIST conv experiment reg vs no reg")
+        rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_rot_mnist_60_conv.dat',
+            'saved_files/reg_vs_unreg_rot_mnist_60_conv.json')
+
+    if args.experiment_name == "gaussian_reg" or args.experiment_name == "all_reg":
+        print("Gaussian linear experiment reg vs no reg")
+        gaussian_linear_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_gaussian.dat',
+            'saved_files/reg_vs_unreg_gaussian.json')
 
     # Run all experiments, soft labeling, comparing regularization vs no regularization.
-    soft_cov_small_mlp_experiment()
-    print("Cover Type experiment soft labeling reg vs no reg")
-    regularization_results('saved_files/reg_vs_unreg_soft_covtype_small.dat')
-    # soft_portraits_conv_experiment()
-    # print("Portraits conv experiment soft labeling reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_soft_portraits.dat')
-    # soft_rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment soft labeling reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat')
-    # soft_gaussian_linear_experiment()
-    # print("Gaussian linear experiment soft labeling reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_soft_gaussian.dat')
+    if args.experiment_name == "cov_soft" or args.experiment_name == "all_soft":
+        print("Cover Type experiment soft labeling reg vs no reg")
+        soft_cov_small_mlp_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_soft_covtype_small.dat',
+            'saved_files/reg_vs_unreg_soft_covtype_small.json')
 
-    # # Dialing ratios results.
-    # dialing_rotated_mnist_60_conv_experiment()
-    # print("Dialing rations MNIST experiment reg vs no reg")
-    # regularization_results('saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat')
+    if args.experiment_name == "portraits_soft" or args.experiment_name == "all_soft":
+        print("Portraits conv experiment soft labeling reg vs no reg")
+        soft_portraits_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_soft_portraits.dat',
+            'saved_files/reg_vs_unreg_soft_portraits.json')
 
-    # # Try retraining the model each iteration.
-    # retrain_soft_rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment reset model when self-training")
-    # regularization_results('saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.dat')
-    # # Use the Keras MNIST model.
-    # keras_retrain_soft_rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment use Keras MNIST model")
-    # regularization_results('saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.dat')
-    # # Use a deeper (4 layer) conv net model.
-    # deeper_retrain_soft_rotated_mnist_60_conv_experiment()
-    # print("Rot MNIST conv experiment use deeper model")
-    # regularization_results('saved_files/deeper_retrain_soft_rot_mnist_60_conv.dat')
+    if args.experiment_name == "rot_mnist_soft" or args.experiment_name == "all_soft":
+        print("Rot MNIST conv experiment soft labeling reg vs no reg")
+        soft_rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.dat',
+            'saved_files/reg_vs_unreg_soft_rot_mnist_60_conv.json')
 
+    if args.experiment_name == "gaussian_soft" or args.experiment_name == "all_soft":
+        print("Gaussian linear experiment soft labeling reg vs no reg")
+        soft_gaussian_linear_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_soft_gaussian.dat',
+            'saved_files/reg_vs_unreg_soft_gaussian.json')
+
+    if args.experiment_name == "ablations":
+        # Dialing ratios results
+        print("Dialing rations MNIST experiment reg vs no reg")
+        dialing_rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.dat',
+            'saved_files/reg_vs_unreg_dialing_rot_mnist_60_conv.json')
+
+        # Try retraining the model each iteration.
+        print("Rot MNIST conv experiment reset model when self-training")
+        retrain_soft_rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.dat',
+            'saved_files/reg_vs_unreg_retrain_soft_rot_mnist_60_conv.json')
+        # Use the Keras MNIST model.
+        print("Rot MNIST conv experiment use Keras MNIST model")
+        keras_retrain_soft_rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.dat',
+            'saved_files/reg_vs_unreg_keras_retrain_soft_rot_mnist_60_conv.json')
+        # Use a deeper (4 layer) conv net model.
+        print("Rot MNIST conv experiment use deeper model")
+        deeper_retrain_soft_rotated_mnist_60_conv_experiment()
+        regularization_results(
+            'saved_files/deeper_retrain_soft_rot_mnist_60_conv.dat',
+            'saved_files/deeper_retrain_soft_rot_mnist_60_conv.json')

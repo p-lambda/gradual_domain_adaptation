@@ -537,6 +537,14 @@ def portraits_conv_experiment():
         soft=False, conf_q=0.1, num_runs=5)
 
 
+def cars_trucks_experiment():
+    run_experiment(
+        dataset_func=datasets.cars_trucks_data_func, n_classes=2, input_shape=(64, 64, 3),
+        save_file='saved_files/cars_trucks.dat',
+        model_func=models.simple_softmax_conv_model, interval=2000, epochs=20, loss='ce',
+        soft=False, conf_q=0.1, num_runs=5, verbose=True)
+
+
 def gaussian_linear_experiment():
     d = 100        
     run_experiment(
@@ -703,6 +711,14 @@ if __name__ == "__main__":
             'saved_files/portraits.dat', 'saved_files/portraits.json')
         experiment_results_improvements(
             'saved_files/portraits.dat', 'saved_files/portraits_imprv.json')
+
+    if args.experiment_name == "cars_trucks_main" or args.experiment_name == "gradual_shift_main":
+        print("Cars-Trucks conv experiment")
+        cars_trucks_experiment()
+        experiment_results(
+            'saved_files/cars_trucks.dat', 'saved_files/cars_trucks.json')
+        experiment_results_improvements(
+            'saved_files/cars_trucks.dat', 'saved_files/cars_trucks.json')
 
     if args.experiment_name == "rotating_mnist_main" or args.experiment_name == "gradual_shift_main":
         print("Rot MNIST conv experiment")
